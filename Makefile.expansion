@@ -1,0 +1,31 @@
+
+.PHONY: pre-commit
+pre-commit:
+	@pre-commit --version || pip install pre-commit
+	@pre-commit install
+
+.PHONY: golangci
+golangci:
+	@golangci-lint --version || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.22.2
+
+.PHONY: kube-codegen
+kube-codegen:
+ifeq (, $(shell command -v kube-codegen))
+	@cd $(shell mktemp -d) && go get -v github.com/zoumo/kube-codegen/cmd/kube-codegen@v0.1.2
+CODEGEN=$(GOBIN)/kube-codegen
+else
+CODEGEN=$(shell command -v kube-codegen)
+endif
+
+# Generate code
+.PHONY: codegen
+codegen: kube-codegen
+	@$(CODEGEN) code-gen \
+		--client-path=pkg/client \
+		--apis-path=pkg/apis \
+		--go-header-file=boilerplate.go.txt \
+		--generators="+openapi,+client,+lister,+informer,+protobuf"
+	
+.PHONY: verify-license
+verify-license:
+	@addlicense -c "ByteDance and its affiliates" -y $(shell date +"%Y") -ignore **/*.yaml -check ** 

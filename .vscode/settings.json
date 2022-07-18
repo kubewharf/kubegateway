@@ -1,0 +1,6 @@
+{
+    "go.toolsEnvVars": {
+        "GOIMPORTSTYLE": "auto",
+    },
+    "licenser.author": "ByteDance and its affiliates.",
+}

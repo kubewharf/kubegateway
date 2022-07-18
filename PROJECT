@@ -1,0 +1,21 @@
+domain: kubegateway.io
+multigroup: true
+plugins:
+  multiLayouts:
+    layouts:
+    - apisPath: pkg/apis
+      boilerplatePath: boilerplate.go.txt
+      clientPath: pkg/client
+      controllersPath: pkg/controller
+      name: controller-manager
+repo: github.com/kubewharf/kubegateway
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  domain: kubegateway.io
+  group: proxy
+  kind: UpstreamCluster
+  path: github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1
+  version: v1alpha1
+version: "3"

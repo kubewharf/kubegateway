@@ -1,0 +1,27 @@
+
+version: 1
+go:
+  minimumVersion: 1.16.0
+  build:
+    globalHooksDir: hack/hooks
+  mod:
+    require:
+      - path: k8s.io/kubernetes
+        version: v1.18.10
+    replace:
+      - path: sigs.k8s.io/controller-runtime
+        version: v0.6.0
+      - path: github.com/markbates/inflect
+        version: v1.0.4
+      - path: k8s.io/apiserver
+        newPath: github.com/kubewharf/apiserver
+        version: gateway-1.18
+      - path: github.com/pkg/errors
+        version: v0.9.1
+      - path: k8s.io/apimachinery
+        version: v0.18.19
+  format:
+    exclude:
+      files:
+       - "datafile.go"
+       - "bindata.go"

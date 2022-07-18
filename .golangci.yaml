@@ -1,0 +1,95 @@
+
+linters-settings:
+  govet:
+    check-shadowing: true
+  golint:
+    min-confidence: 0
+  gocyclo:
+    min-complexity: 15
+  maligned:
+    suggest-new: true
+  dupl:
+    threshold: 100
+  misspell:
+    locale: US
+  lll:
+    line-length: 140
+  goimports:
+    local-prefixes: github.com/kubewharf/kubegateway
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - dupImport # https://github.com/go-critic/go-critic/issues/845
+      - ifElseChain
+      - octalLiteral
+      - wrapperFunc
+  funlen:
+    lines: 100
+    statements: 50
+linters:
+  disable-all: true
+  enable:
+    ## for bug
+    - bodyclose
+    - errcheck
+    - govet
+    - ineffassign
+    - scopelint
+    - staticcheck
+    - typecheck
+
+    ## for complexity
+    # - gocyclo
+    - nakedret
+    - gosimple
+
+    ## for format
+    - gofmt
+    - goimports
+
+    ## for style
+    - unconvert
+    - goconst
+    - misspell
+    - unparam
+    - golint
+    - whitespace
+    # - goerr113
+
+    ## for unused
+    - deadcode
+    - unused
+    - unparam
+    - varcheck
+    - structcheck
+
+run:
+  deadline: 5m
+  # default is true. Enables skipping of directories:
+  #   vendor$, third_party$, testdata$, examples$, Godeps$, builtin$
+  skip-dirs-use-default: true
+
+issues:
+  exclude-use-default: true
+  exclude-rules:
+    - path: _test.go
+      linters:
+        - errcheck
+        - unparam
+        - gocyclo
+        - dupl
+        - gosec
+
+    # enable shadow declaration for err
+    - linters:
+        - govet
+      text: declaration of "err" shadows declaration at line
+
+    # - linters:
+    #     - govet
+    #   text: composite literal uses unkeyed fields
