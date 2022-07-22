@@ -168,8 +168,8 @@ func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWrite
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
 	}
 	responsewriters.ErrorNegotiated(err, d.codecs, gv, w, req)
-	metrics.RecordProxyDenyReason(req.Host, reason)
 	code := int(err.Status().Code)
+	metrics.RecordProxyRequestTermination(req, code, reason)
 	if captureErrorOutput(code) {
 		klog.Errorf("[logging denied] method=%q host=%q URI=%q resp=%v reason=%q message=[%v]", req.Method, net.HostWithoutPort(req.Host), req.RequestURI, code, reason, err.Error())
 	}
