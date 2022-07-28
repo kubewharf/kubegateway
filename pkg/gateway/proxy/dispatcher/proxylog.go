@@ -20,8 +20,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apiserver/pkg/authentication/user"
+	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/endpoints/responsewriter"
 	"k8s.io/klog"
 )
@@ -39,14 +41,14 @@ type responseWriterDelegator struct {
 	captureErrorOutput bool
 
 	logging      bool
-	verb         string
 	host         string
 	endpoint     string
 	user         user.Info
 	impersonator user.Info
 
-	req *http.Request
-	w   http.ResponseWriter
+	req         *http.Request
+	requestInfo *request.RequestInfo
+	w           http.ResponseWriter
 
 	written int64
 }
@@ -55,7 +57,8 @@ func decorateResponseWriter(
 	req *http.Request,
 	w http.ResponseWriter,
 	logging bool,
-	verb, host, endpoint string,
+	requestInfo *request.RequestInfo,
+	host, endpoint string,
 	user, impersonator user.Info,
 ) *responseWriterDelegator {
 	return &responseWriterDelegator{
@@ -63,7 +66,7 @@ func decorateResponseWriter(
 		req:          req,
 		w:            w,
 		logging:      logging,
-		verb:         verb,
+		requestInfo:  requestInfo,
 		host:         host,
 		endpoint:     endpoint,
 		user:         user,
@@ -111,6 +114,34 @@ func (rw *responseWriterDelegator) Elapsed() time.Duration {
 	return time.Since(rw.startTime)
 }
 
+func (rw *responseWriterDelegator) isWatch() bool {
+	return rw.requestInfo.IsResourceRequest && rw.requestInfo.Verb == "watch"
+}
+
+func (rw *responseWriterDelegator) MonitorBeforeProxy() {
+	if rw.isWatch() {
+		metrics.RecordWatcherRegistered(rw.host, rw.endpoint, rw.requestInfo.Resource)
+		//TODO: log watch requests before proxy
+	}
+}
+
+func (rw *responseWriterDelegator) MonitorAfterProxy() {
+	if rw.isWatch() {
+		metrics.RecordWatcherUnregistered(rw.host, rw.endpoint, rw.requestInfo.Resource)
+	}
+	metrics.MonitorProxyRequest(
+		rw.req,
+		rw.host,
+		rw.endpoint,
+		rw.requestInfo,
+		rw.Header().Get("Content-Type"),
+		rw.Status(),
+		rw.ContentLength(),
+		rw.Elapsed(),
+	)
+	rw.Log()
+}
+
 // Log is intended to be called once at the end of your request handler, via defer
 func (rw *responseWriterDelegator) Log() {
 	if !rw.logging {
@@ -118,7 +149,7 @@ func (rw *responseWriterDelegator) Log() {
 	}
 	latency := rw.Elapsed()
 	sourceIPs := utilnet.SourceIPs(rw.req)
-	verb := strings.ToUpper(rw.verb)
+	verb := strings.ToUpper(rw.requestInfo.Verb)
 	if rw.impersonator != nil {
 		klog.Infof("verb=%q host=%q endpoint=%q URI=%q latency=%v resp=%v user=%q userGroup=%v userAgent=%q impersonator=%q impersonatorGroup=%v srcIP=%v: %v",
 			verb,

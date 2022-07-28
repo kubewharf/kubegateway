@@ -121,6 +121,17 @@ var (
 		},
 		[]string{"pid", "serverName", "verb", "path", "code", "reason"},
 	)
+	// proxyRegisteredWatchers is a number of currently registered watchers splitted by resource.
+	proxyRegisteredWatchers = compbasemetrics.NewGaugeVec(
+		&compbasemetrics.GaugeOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "apiserver_registered_watchers",
+			Help:           "Number of currently registered watchers for a given resources",
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"pid", "serverName", "endpoint", "resource"},
+	)
 
 	localMetrics = []compbasemetrics.Registerable{
 		proxyRequestCounter,
@@ -128,6 +139,7 @@ var (
 		proxyResponseSizes,
 		proxyUpstreamUnhealthy,
 		proxyRequestTerminationsTotal,
+		proxyRegisteredWatchers,
 	}
 )
 
@@ -198,6 +210,14 @@ func RecordProxyRequestTermination(req *http.Request, code int, reason string) {
 	}
 	serverName := net.HostWithoutPort(req.Host)
 	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, serverName, cleanVerb(verb, req), requestInfo.Path, codeToString(code), reason).Inc()
+}
+
+func RecordWatcherRegistered(serverName, endpoint, resource string) {
+	proxyRegisteredWatchers.WithLabelValues(proxyPid, serverName, endpoint, resource).Inc()
+}
+
+func RecordWatcherUnregistered(serverName, endpoint, resource string) {
+	proxyRegisteredWatchers.WithLabelValues(proxyPid, serverName, endpoint, resource).Dec()
 }
 
 func canonicalVerb(verb string, scope string) string {

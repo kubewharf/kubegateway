@@ -143,23 +143,14 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}()
 
 	logging := d.enableAccessLog && endpointPicker.EnableLog()
-	delegate := decorateResponseWriter(req, w, logging, requestInfo.Verb, extraInfo.Hostname, endpoint.Endpoint, user, extraInfo.Impersonator)
-	defer delegate.Log()
+	delegate := decorateResponseWriter(req, w, logging, requestInfo, extraInfo.Hostname, endpoint.Endpoint, user, extraInfo.Impersonator)
+	delegate.MonitorBeforeProxy()
+	defer delegate.MonitorAfterProxy()
+
 	rw := responsewriter.WrapForHTTP1Or2(delegate)
 
 	proxyHandler := proxy.NewUpgradeAwareHandler(location, transport, false, false, d)
 	proxyHandler.ServeHTTP(rw, newReq)
-
-	metrics.MonitorProxyRequest(
-		req,
-		extraInfo.Hostname,
-		endpoint.Endpoint,
-		requestInfo,
-		delegate.Header().Get("Content-Type"),
-		delegate.Status(),
-		delegate.ContentLength(),
-		delegate.Elapsed(),
-	)
 }
 
 func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWriter, req *http.Request, reason string) {
