@@ -16,70 +16,8 @@ package net
 
 import (
 	"net"
-	"os"
 	"strings"
-
-	"k8s.io/apiserver/pkg/server"
 )
-
-var (
-	localServerNames = GetLocalServerNames()
-)
-
-// GetNetInterfaceIPs returns the IP on local network interfaces of the host
-func GetNetInterfaceIPs() []string {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return nil
-	}
-
-	locals := []string{}
-
-	for _, address := range addrs {
-		// check the address type and if it is not a loopback the display it
-		if ipnet, ok := address.(*net.IPNet); ok {
-			locals = append(locals, ipnet.IP.String())
-		}
-	}
-	return locals
-}
-
-// get proxy domain
-func GetLocalServerNames() []string {
-	localServerNames := []string{"localhost"}
-	if proxyDomain := os.Getenv("APISERVER_PROXY_DOMAIN"); len(proxyDomain) > 0 {
-		localServerNames = append(localServerNames, proxyDomain)
-	}
-	if localIP := GetNetInterfaceIPs(); len(localIP) > 0 {
-		localServerNames = append(localServerNames, localIP...)
-	}
-	return localServerNames
-}
-
-// check whether request should be processed by apiserver itself
-func IsLocalRequest(host string) bool {
-	if len(host) == 0 {
-		return true
-	}
-	host = HostWithoutPort(host)
-	if host == server.LoopbackClientServerNameOverride {
-		// LoopbackClientServerNameOverride is passed to the apiserver from the loopback client in order to
-		// select the loopback certificate via SNI if TLS is used.
-		return true
-	}
-	ip := net.ParseIP(host)
-	if ip != nil {
-		if ip.IsLoopback() || ip.IsUnspecified() {
-			return true
-		}
-	}
-	for _, localServerName := range localServerNames {
-		if strings.HasPrefix(host, localServerName) {
-			return true
-		}
-	}
-	return false
-}
 
 func HostWithoutPort(hostport string) string {
 	hostport = strings.ToLower(hostport)

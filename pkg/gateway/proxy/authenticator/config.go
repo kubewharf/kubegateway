@@ -28,8 +28,6 @@ import (
 	unionauth "k8s.io/apiserver/pkg/authentication/request/union"
 	"k8s.io/apiserver/pkg/authentication/request/websocket"
 	"k8s.io/apiserver/pkg/authentication/request/x509"
-	"k8s.io/client-go/util/keyutil"
-	"k8s.io/kubernetes/pkg/serviceaccount"
 
 	"github.com/kubewharf/kubegateway/pkg/clusters"
 	"github.com/kubewharf/kubegateway/pkg/gateway/authentication/token/webhook"
@@ -134,19 +132,4 @@ func (c AuthenricatorConfig) New() (authenticator.Request, *spec.SecurityDefinit
 		authenticator = unionauth.NewFailOnError(authenticator, anonymous.NewAuthenticator())
 	}
 	return authenticator, &securityDefinitions, nil
-}
-
-// newLegacyServiceAccountAuthenticator returns an authenticator.Token or an error
-func newLegacyServiceAccountAuthenticator(keyfiles []string, lookup bool, apiAudiences authenticator.Audiences, serviceAccountGetter serviceaccount.ServiceAccountTokenGetter) (authenticator.Token, error) {
-	allPublicKeys := []interface{}{}
-	for _, keyfile := range keyfiles {
-		publicKeys, err := keyutil.PublicKeysFromFile(keyfile)
-		if err != nil {
-			return nil, err
-		}
-		allPublicKeys = append(allPublicKeys, publicKeys...)
-	}
-
-	tokenAuthenticator := serviceaccount.JWTTokenAuthenticator(serviceaccount.LegacyIssuer, allPublicKeys, apiAudiences, serviceaccount.NewLegacyValidator(lookup, serviceAccountGetter))
-	return tokenAuthenticator, nil
 }

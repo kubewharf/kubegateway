@@ -96,7 +96,6 @@ func (m *UpstreamClusterController) syncUpstreamCluster(obj interface{}) (syncqu
 	info, ok := m.Get(clusterName)
 
 	if !ok {
-
 		// bootstrap
 		clusterInfo, err := clusters.CreateClusterInfo(cluster, GatewayHealthCheck)
 		if err != nil {

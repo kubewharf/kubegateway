@@ -50,8 +50,7 @@ func (o *AuthenticationOptions) AddFlags(fs *pflag.FlagSet) {
 	fs.DurationVar(&o.TokenSuccessCacheTTL, "proxy-authentication-token-success-cache-ttl", o.TokenSuccessCacheTTL,
 		"The duration to cache seccess responses from the upstream token request authenticator.")
 	fs.DurationVar(&o.TokenFailureCacheTTL, "proxy-authentication-token-failure-cache-ttl", o.TokenFailureCacheTTL,
-		"The duration to cache failure responses from the upsteam token request authenticator.")
-
+		"The duration to cache failure responses from the upstream token request authenticator.")
 }
 
 func (o *AuthenticationOptions) ToAuthenticationConfig(

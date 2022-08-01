@@ -18,7 +18,7 @@ import (
 
 	"k8s.io/apiserver/pkg/admission"
 
-	. "github.com/kubewharf/kubegateway/plugin/admission/upstreamcluster"
+	. "github.com/kubewharf/kubegateway/plugin/admission/upstreamcluster" //nolint
 )
 
 var AdmissionPlugins = make(map[string]admission.Factory)

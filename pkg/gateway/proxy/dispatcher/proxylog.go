@@ -20,12 +20,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/endpoints/responsewriter"
 	"k8s.io/klog"
+
+	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 )
 
 var _ http.ResponseWriter = &responseWriterDelegator{}

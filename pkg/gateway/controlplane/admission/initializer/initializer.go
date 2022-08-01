@@ -37,7 +37,7 @@ type WantsGatewayResourceInformerFactory interface {
 func New(
 	gatewayclientset gatewayclientset.Interface,
 	gatewayinformers gatewayinformers.SharedInformerFactory,
-) pluginInitializer {
+) admission.PluginInitializer {
 	return pluginInitializer{
 		gatewayclientset: gatewayclientset,
 		gatewayinformers: gatewayinformers,

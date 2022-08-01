@@ -32,7 +32,7 @@ var _ admission.ValidationInterface = &upstreamclusterPlugin{}
 var _ genericadmissioninitializer.WantsExternalKubeInformerFactory = &upstreamclusterPlugin{}
 var _ genericadmissioninitializer.WantsExternalKubeClientSet = &upstreamclusterPlugin{}
 
-func NewUpstreamClusterPlugin() *upstreamclusterPlugin {
+func NewUpstreamClusterPlugin() admission.Interface {
 	return &upstreamclusterPlugin{
 		Handler: admission.NewHandler(admission.Create, admission.Update),
 	}
