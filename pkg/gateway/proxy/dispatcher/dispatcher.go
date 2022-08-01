@@ -143,23 +143,14 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}()
 
 	logging := d.enableAccessLog && endpointPicker.EnableLog()
-	delegate := decorateResponseWriter(req, w, logging, requestInfo.Verb, extraInfo.Hostname, endpoint.Endpoint, user, extraInfo.Impersonator)
-	defer delegate.Log()
+	delegate := decorateResponseWriter(req, w, logging, requestInfo, extraInfo.Hostname, endpoint.Endpoint, user, extraInfo.Impersonator)
+	delegate.MonitorBeforeProxy()
+	defer delegate.MonitorAfterProxy()
+
 	rw := responsewriter.WrapForHTTP1Or2(delegate)
 
 	proxyHandler := proxy.NewUpgradeAwareHandler(location, transport, false, false, d)
 	proxyHandler.ServeHTTP(rw, newReq)
-
-	metrics.MonitorProxyRequest(
-		req,
-		extraInfo.Hostname,
-		endpoint.Endpoint,
-		requestInfo,
-		delegate.Header().Get("Content-Type"),
-		delegate.Status(),
-		delegate.ContentLength(),
-		delegate.Elapsed(),
-	)
 }
 
 func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWriter, req *http.Request, reason string) {
@@ -168,8 +159,8 @@ func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWrite
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
 	}
 	responsewriters.ErrorNegotiated(err, d.codecs, gv, w, req)
-	metrics.RecordProxyDenyReason(req.Host, reason)
 	code := int(err.Status().Code)
+	metrics.RecordProxyRequestTermination(req, code, reason)
 	if captureErrorOutput(code) {
 		klog.Errorf("[logging denied] method=%q host=%q URI=%q resp=%v reason=%q message=[%v]", req.Method, net.HostWithoutPort(req.Host), req.RequestURI, code, reason, err.Error())
 	}

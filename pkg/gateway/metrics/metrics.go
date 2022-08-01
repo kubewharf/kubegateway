@@ -27,6 +27,7 @@ import (
 	utilsets "k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/apiserver/pkg/endpoints/metrics"
 	"k8s.io/apiserver/pkg/endpoints/request"
+	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
 	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	compbasemetrics "k8s.io/component-base/metrics"
@@ -63,32 +64,14 @@ var (
 		"WATCH",
 		"WATCHLIST")
 
-	proxyDeniedRequestCounter = compbasemetrics.NewCounterVec(
-		&compbasemetrics.CounterOpts{
-			Namespace:      namespace,
-			Subsystem:      subsystem,
-			Name:           "deny_requests",
-			Help:           "Number of denied requests by api server proxy",
-			StabilityLevel: compbasemetrics.ALPHA,
-		},
-		[]string{"pid", "serverName", "reason"},
-	)
-
-	// TODO(a-robinson): Add unit tests for the handling of these metrics once
-	// the upstream library supports it.
 	proxyRequestCounter = compbasemetrics.NewCounterVec(
 		&compbasemetrics.CounterOpts{
 			Namespace:      namespace,
 			Subsystem:      subsystem,
 			Name:           "apiserver_request_total",
-			Help:           "Counter of apiserver requests broken out for each verb, dry run value, group, version, resource, scope, component, client, and HTTP response contentType and code.",
+			Help:           "Counter of apiserver requests broken out for each serverName, endpoint, verb, resource and code.",
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
-		// The label_name contentType doesn't follow the label_name convention defined here:
-		// https://github.com/kubernetes/community/blob/master/contributors/devel/sig-instrumentation/instrumentation.md
-		// But changing it would break backwards compatibility. Future label_names
-		// should be all lowercase and separated by underscores.
-		// []string{"pid", "serverName", "endpoint", "code"},
 		[]string{"pid", "serverName", "endpoint", "verb", "resource", "code"},
 	)
 	proxyRequestLatencies = compbasemetrics.NewHistogramVec(
@@ -96,15 +79,15 @@ var (
 			Namespace: namespace,
 			Subsystem: subsystem,
 			Name:      "apiserver_request_duration_seconds",
-			Help:      "Response latency distribution in seconds for each verb, dry run value, group, version, resource, subresource, scope and component.",
+			Help:      "Response latency distribution in seconds for each serverName, endpoint, verb, resource.",
 			// This metric is used for verifying api call latencies SLO,
 			// as well as tracking regressions in this aspects.
 			// Thus we customize buckets significantly, to empower both usecases.
 			Buckets: []float64{0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
-				1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 40, 50, 60},
+				1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 40, 50, 60, 120, 180, 240, 300},
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
-		[]string{"pid", "serverName", "verb"},
+		[]string{"pid", "serverName", "endpoint", "verb", "resource"},
 	)
 	proxyResponseSizes = compbasemetrics.NewHistogramVec(
 		&compbasemetrics.HistogramOpts{
@@ -136,16 +119,27 @@ var (
 			Help:           "Number of requests which proxy terminated in self-defense.",
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
-		[]string{"pid", "serverName", "verb", "path", "code"},
+		[]string{"pid", "serverName", "verb", "path", "code", "reason"},
+	)
+	// proxyRegisteredWatchers is a number of currently registered watchers splitted by resource.
+	proxyRegisteredWatchers = compbasemetrics.NewGaugeVec(
+		&compbasemetrics.GaugeOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "apiserver_registered_watchers",
+			Help:           "Number of currently registered watchers for a given resources",
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"pid", "serverName", "endpoint", "resource"},
 	)
 
 	localMetrics = []compbasemetrics.Registerable{
-		proxyDeniedRequestCounter,
 		proxyRequestCounter,
 		proxyRequestLatencies,
 		proxyResponseSizes,
 		proxyUpstreamUnhealthy,
 		proxyRequestTerminationsTotal,
+		proxyRegisteredWatchers,
 	}
 )
 
@@ -164,12 +158,7 @@ func Register() {
 	})
 }
 
-// RecordProxyDenyReason records that the request was terminated by kube-gateway proxy.
-func RecordProxyDenyReason(serverName string, reason string) {
-	proxyDeniedRequestCounter.WithLabelValues(proxyPid, serverName, reason).Inc()
-}
-
-// RecordProxyDenyReason records that the upstream endpoint is unhealthy.
+// RecordUnhealthyUpstream records that the upstream endpoint is unhealthy.
 func RecordUnhealthyUpstream(serverName string, endpoint string, reason string) {
 	proxyUpstreamUnhealthy.WithLabelValues(proxyPid, serverName, endpoint, reason).Inc()
 }
@@ -192,7 +181,7 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint string, request
 		}
 	}
 	proxyRequestCounter.WithLabelValues(proxyPid, serverName, endpoint, verb, resource, codeToString(httpCode)).Inc()
-	proxyRequestLatencies.WithLabelValues(proxyPid, serverName, verb).Observe(elapsedSeconds)
+	proxyRequestLatencies.WithLabelValues(proxyPid, serverName, endpoint, verb, resource).Observe(elapsedSeconds)
 	// We are only interested in response sizes of read requests.
 	if requestInfo.IsResourceRequest && (verb == "GET" || verb == "LIST") {
 		proxyResponseSizes.WithLabelValues(proxyPid, serverName, endpoint, verb, resource).Observe(float64(respSize))
@@ -203,8 +192,9 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint string, request
 // preservation or apiserver self-defense mechanism (e.g. timeouts, maxinflight throttling,
 // proxyHandler errors). RecordProxyRequestTermination should only be called zero or one times
 // per request.
-func RecordProxyRequestTermination(req *http.Request, requestInfo *request.RequestInfo, code int) {
-	if requestInfo == nil {
+func RecordProxyRequestTermination(req *http.Request, code int, reason string) {
+	requestInfo, ok := genericapirequest.RequestInfoFrom(req.Context())
+	if !ok {
 		requestInfo = &request.RequestInfo{Verb: req.Method, Path: req.URL.Path}
 	}
 	scope := metrics.CleanScope(requestInfo)
@@ -219,7 +209,15 @@ func RecordProxyRequestTermination(req *http.Request, requestInfo *request.Reque
 		verb = OtherRequestMethod
 	}
 	serverName := net.HostWithoutPort(req.Host)
-	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, serverName, cleanVerb(verb, req), requestInfo.Path, codeToString(code)).Inc()
+	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, serverName, cleanVerb(verb, req), requestInfo.Path, codeToString(code), reason).Inc()
+}
+
+func RecordWatcherRegistered(serverName, endpoint, resource string) {
+	proxyRegisteredWatchers.WithLabelValues(proxyPid, serverName, endpoint, resource).Inc()
+}
+
+func RecordWatcherUnregistered(serverName, endpoint, resource string) {
+	proxyRegisteredWatchers.WithLabelValues(proxyPid, serverName, endpoint, resource).Dec()
 }
 
 func canonicalVerb(verb string, scope string) string {
