@@ -39,7 +39,7 @@ linters:
     - errcheck
     - govet
     - ineffassign
-    - scopelint
+    - exportloopref
     - staticcheck
     - typecheck
 
@@ -57,7 +57,7 @@ linters:
     - goconst
     - misspell
     - unparam
-    - golint
+    - revive
     - whitespace
     # - goerr113
 
