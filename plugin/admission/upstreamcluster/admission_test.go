@@ -60,7 +60,8 @@ func Test_normalizeRules(t *testing.T) {
 			},
 		},
 	}
-	for _, tt := range tests {
+	for i := range tests {
+		tt := tests[i]
 		t.Run(tt.name, func(t *testing.T) {
 			if got := normalizeRules(tt.in); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("normalizeRules() = %v, want %v", got, tt.want)

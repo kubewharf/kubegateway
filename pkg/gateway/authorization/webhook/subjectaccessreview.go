@@ -128,7 +128,6 @@ func (a *MultiClusterSubjectAccessReviewAuthorizer) Authorize(ctx context.Contex
 	default:
 		return authorizer.DecisionNoOpinion, r.Status.Reason, nil
 	}
-
 }
 
 func (a *MultiClusterSubjectAccessReviewAuthorizer) subjectAccessReviewFromAttributes(attr authorizer.Attributes) *authorizationv1.SubjectAccessReview {

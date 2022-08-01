@@ -102,7 +102,7 @@ func TestRuleMatches(t *testing.T) {
 				{
 					Verbs: []string{"get"},
 					APIGroups: []string{
-						"extentions",
+						"extensions",
 					},
 					Resources: []string{
 						"deployments",

@@ -183,6 +183,7 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint string, request
 	proxyRequestCounter.WithLabelValues(proxyPid, serverName, endpoint, verb, resource, codeToString(httpCode)).Inc()
 	proxyRequestLatencies.WithLabelValues(proxyPid, serverName, endpoint, verb, resource).Observe(elapsedSeconds)
 	// We are only interested in response sizes of read requests.
+	// nolint:goconst
 	if requestInfo.IsResourceRequest && (verb == "GET" || verb == "LIST") {
 		proxyResponseSizes.WithLabelValues(proxyPid, serverName, endpoint, verb, resource).Observe(float64(respSize))
 	}

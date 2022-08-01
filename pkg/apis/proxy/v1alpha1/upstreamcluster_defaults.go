@@ -19,7 +19,7 @@ package v1alpha1
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 
 // SetDefaults_UpstreamCluster set additional defaults compared to its counterpart
-// nolint:golint
+// nolint
 func SetDefaults_UpstreamCluster(obj *UpstreamCluster) {
 	for i := range obj.Spec.DispatchPolicies {
 		if len(obj.Spec.DispatchPolicies[i].Strategy) == 0 {
