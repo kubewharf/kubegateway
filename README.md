@@ -1,10 +1,6 @@
 # KubeGateway
 
-
-
-English | [Chinese](README.zh_CN.md)
-
-
+English | [简体中文](README.zh_CN.md)
 
 ## Overview
 
@@ -35,10 +31,9 @@ In terms of massive cluster proxies：
 - [Quick start](docs/zh/quick_start.md)
 - [Performance testing](docs/zh/benchmark.md)
 
-
 ## Contributing
 
-Please refer to [Contributing](CONTRIBUTING.md) 
+Please refer to [Contributing](CONTRIBUTING.md)
 
 ## Code of Conduct
 
