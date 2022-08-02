@@ -1,6 +1,6 @@
 # KubeGateway
 
-[English](README.md) | 中文
+[English](README.md) | 简体中文
 
 ## 概述
 
@@ -27,7 +27,7 @@ kube-gateway 是字节跳动内部管理海量 kubernetes 集群的最佳实践�
 
 ## 贡献代码
 
-请查看 [Contributing](CONTRIBUTING.md) 
+请查看 [Contributing](CONTRIBUTING.md)
 
 ## 行为准则
 
