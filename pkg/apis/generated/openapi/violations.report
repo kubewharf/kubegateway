@@ -3,7 +3,7 @@ API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/
 API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,ClientConfig,CertData
 API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,ClientConfig,KeyData
 API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,DispatchPolicy,Rules
-API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,DispatchPolicy,UpsteamSubset
+API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,DispatchPolicy,UpstreamSubset
 API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,DispatchPolicyRule,APIGroups
 API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,DispatchPolicyRule,NonResourceURLs
 API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,DispatchPolicyRule,ResourceNames

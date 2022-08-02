@@ -68,10 +68,10 @@ message DispatchPolicy {
   // Specifies a load balancing method for a server group
   optional string strategy = 1;
 
-  // UpsteamSubset indacates to the list of upstream endpoints. An empty set
+  // UpstreamSubset indacates to the list of upstream endpoints. An empty set
   // means use all upstreams
   // +optional
-  repeated string upsteamSubset = 2;
+  repeated string upstreamSubset = 2;
 
   // Rules holds all the DispatchPolicyRules for this policy
   // Gateway matches rules according to the list order, the previous rules

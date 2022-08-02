@@ -190,9 +190,9 @@ func schema_pkg_apis_proxy_v1alpha1_DispatchPolicy(ref common.ReferenceCallback)
 							Format:      "",
 						},
 					},
-					"upsteamSubset": {
+					"upstreamSubset": {
 						SchemaProps: spec.SchemaProps{
-							Description: "UpsteamSubset indacates to the list of upstream endpoints. An empty set means use all upstreams",
+							Description: "UpstreamSubset indacates to the list of upstream endpoints. An empty set means use all upstreams",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{

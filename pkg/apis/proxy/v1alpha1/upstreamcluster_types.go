@@ -196,10 +196,10 @@ type DispatchPolicy struct {
 	// Specifies a load balancing method for a server group
 	Strategy Strategy `json:"strategy,omitempty" protobuf:"bytes,1,opt,name=strategy,casttype=Strategy"`
 
-	// UpsteamSubset indacates to the list of upstream endpoints. An empty set
+	// UpstreamSubset indacates to the list of upstream endpoints. An empty set
 	// means use all upstreams
 	// +optional
-	UpsteamSubset []string `json:"upsteamSubset,omitempty" protobuf:"bytes,2,rep,name=upsteamSubset"`
+	UpstreamSubset []string `json:"upstreamSubset,omitempty" protobuf:"bytes,2,rep,name=upstreamSubset"`
 
 	// Rules holds all the DispatchPolicyRules for this policy
 	// Gateway matches rules according to the list order, the previous rules

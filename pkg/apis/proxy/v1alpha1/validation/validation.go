@@ -212,7 +212,7 @@ func ValidateDispatchPolicy(upstreams, flowControlSchemaNames sets.String, polic
 		allErrs = append(allErrs, field.Invalid(fldPath.Child("strategy"), policy.Strategy, ""))
 	}
 
-	for j, u := range policy.UpsteamSubset {
+	for j, u := range policy.UpstreamSubset {
 		if !upstreams.Has(u) {
 			allErrs = append(allErrs, field.Invalid(fldPath.Child("upstreamSubset").Index(j), u, "upstream subset endpoint must be present in servers"))
 		}
