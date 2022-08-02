@@ -491,8 +491,8 @@ func (c *ClusterInfo) MatchAttributes(requestAttributes authorizer.Attributes) (
 		enableLog:   isLogEnabled(logging.Mode, policy.LogMode),
 	}
 
-	if len(policy.UpsteamSubset) != 0 {
-		result.upstreams = policy.UpsteamSubset
+	if len(policy.UpstreamSubset) != 0 {
+		result.upstreams = policy.UpstreamSubset
 	} else {
 		result.upstreams = c.AllEndpoints()
 	}
