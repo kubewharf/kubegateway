@@ -16,7 +16,6 @@ package webhook
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -56,7 +55,7 @@ func (a *multiClusterTokenReviewAuthenticator) AuthenticateToken(ctx context.Con
 	host := info.Hostname
 
 	cluster, _, err := a.clientProvider.ClientFor(host)
-	if err != nil && errors.Is(err, clusters.ErrClusterNotFound) {
+	if err != nil {
 		return nil, false, err
 	}
 

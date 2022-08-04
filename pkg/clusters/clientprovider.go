@@ -31,7 +31,7 @@ func (m *manager) ClientFor(name string) (*ClusterInfo, kubernetes.Interface, er
 	}
 	endpoint, err := cluster.PickOne()
 	if err != nil {
-		return nil, nil, err
+		return cluster, nil, err
 	}
 	return cluster, endpoint.Clientset(), nil
 }
