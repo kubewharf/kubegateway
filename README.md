@@ -47,7 +47,7 @@ Please refer to [Maintainers](MAINTAINERS.md)
 
 If you find a potential security issue in this project, or think you may have discovered a security issue.
 
-We hope you notify Bytedance Security via our [Security Center](https://security.bytedance.com/src) or [Vulnerability Report Email] (sec@bytedance.com).
+We hope you notify Bytedance Security via our [Security Center](https://security.bytedance.com/src) or [Vulnerability Report Email](sec@bytedance.com).
 
 Please **do not** create a public GitHub issue.
 
