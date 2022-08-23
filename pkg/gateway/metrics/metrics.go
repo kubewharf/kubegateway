@@ -25,7 +25,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"k8s.io/apimachinery/pkg/types"
 	utilsets "k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apiserver/pkg/endpoints/metrics"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
@@ -170,7 +169,7 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint string, request
 		requestInfo = &request.RequestInfo{Verb: req.Method, Path: req.URL.Path}
 	}
 
-	scope := metrics.CleanScope(requestInfo)
+	scope := CleanScope(requestInfo)
 	verb := canonicalVerb(strings.ToUpper(requestInfo.Verb), scope)
 	elapsedSeconds := elapsed.Seconds()
 	resource := "NonResourceRequest"
@@ -198,7 +197,7 @@ func RecordProxyRequestTermination(req *http.Request, code int, reason string) {
 	if !ok {
 		requestInfo = &request.RequestInfo{Verb: req.Method, Path: req.URL.Path}
 	}
-	scope := metrics.CleanScope(requestInfo)
+	scope := CleanScope(requestInfo)
 	// We don't use verb from <requestInfo>, as for the healthy path
 	// MonitorRequest is called from InstrumentRouteFunc which is registered
 	// in installer.go with predefined list of verbs (different than those
@@ -219,6 +218,21 @@ func RecordWatcherRegistered(serverName, endpoint, resource string) {
 
 func RecordWatcherUnregistered(serverName, endpoint, resource string) {
 	proxyRegisteredWatchers.WithLabelValues(proxyPid, serverName, endpoint, resource).Dec()
+}
+
+// CleanScope returns the scope of the request.
+func CleanScope(requestInfo *request.RequestInfo) string {
+	if requestInfo.Name != "" || requestInfo.Verb == "create" {
+		return "resource"
+	}
+	if requestInfo.Namespace != "" {
+		return "namespace"
+	}
+	if requestInfo.IsResourceRequest {
+		return "cluster"
+	}
+	// this is the empty scope
+	return ""
 }
 
 func canonicalVerb(verb string, scope string) string {
