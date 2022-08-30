@@ -26,6 +26,7 @@ import (
 	"k8s.io/apiserver/pkg/endpoints/responsewriter"
 	"k8s.io/klog"
 
+	"github.com/kubewharf/apiserver-runtime/pkg/server"
 	gatewayrequest "github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
 	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 )
@@ -153,10 +154,14 @@ func (rw *responseWriterDelegator) MonitorAfterProxy() {
 
 // Log is intended to be called once at the end of your request handler, via defer
 func (rw *responseWriterDelegator) Log() {
-	if !rw.logging {
+	latency := rw.Elapsed()
+	logging := rw.logging
+	if latency.Minutes() > 10 && !server.DefaultLongRunningFunc(rw.req, rw.requestInfo) {
+		logging = true
+	}
+	if !logging {
 		return
 	}
-	latency := rw.Elapsed()
 	sourceIPs := utilnet.SourceIPs(rw.req)
 	verb := strings.ToUpper(rw.requestInfo.Verb)
 	if rw.impersonator != nil {
