@@ -15,7 +15,9 @@ kube-gateway 是字节跳动内部管理海量 kubernetes 集群的最佳实践�
 -  它为 kube-apiserver 提供流量特征定制的路由规则，可以通过 verb，apiGroup，resource，user，userGroup，serviceAccounts，nonResourceURLs 等信息来区分请求，进行差异化转发，并具备限流、降级、熔断等流量治理能力
 -  它能收敛单个 kube-apiserver 实例上的 TCP 连接数，降低至少一个数量级
 -  它的路由等配置实时生效而不需要重启服务
+
 在海量集群代理方面
+
 - 能够动态地添加和删除对新集群的代理支持
 - 为不同集群动态提供不同的 TLS 证书以及 ClientCA
 - 提供允许/禁用清单、监控报警、熔断等功能
