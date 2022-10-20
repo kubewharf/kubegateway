@@ -1,0 +1,26 @@
+apiVersion: proxy.kubegateway.io/v1alpha1
+kind: UpstreamCluster
+metadata:
+  name: localhost
+spec:
+  clientConfig:
+    caData: <client-ca>
+    keyData: <client-key>
+    certData: <client-cert>
+  dispatchPolicies:
+  - rules:
+    - apiGroups:
+      - '*'
+      nonResourceURLs:
+      - '*'
+      resources:
+      - '*'
+      verbs:
+      - '*'
+    strategy: RoundRobin
+  secureServing:
+    clientCAData: <serving-client-ca>
+    keyData: <serving-key>
+    certData: <serving-cert>
+  servers:
+  - endpoint: https://127.0.0.1:6443
