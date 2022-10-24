@@ -22,7 +22,8 @@ kube-gateway 是字节跳动内部管理海量 kubernetes 集群的最佳实践�
 
 ## 详细文档
 - [设计文档](docs/zh/design.md)
-- [快速开始](docs/zh/quick_start.md)
+- [快速开始](docs/zh/manually-setup.md)
+- [开发指引](docs/zh/quick_start.md)
 - [性能测试](docs/zh/benchmark.md)
 
 ## 贡献代码
