@@ -36,6 +36,7 @@ import (
 	"k8s.io/klog"
 
 	"github.com/kubewharf/kubegateway/pkg/clusters"
+	"github.com/kubewharf/kubegateway/pkg/clusters/features"
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
 	"github.com/kubewharf/kubegateway/pkg/gateway/net"
 )
@@ -81,6 +82,17 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		d.responseError(errors.NewServiceUnavailable(fmt.Sprintf("the request cluster(%s) is not being proxied", extraInfo.Hostname)), w, req, statusReasonClusterNotBeingProxied)
 		return
 	}
+
+	if cluster.FeatureEnabled(features.CloseConnectionWhenIdle) {
+		// Send a GOAWAY and tear down the TCP connection when idle.
+		w.Header().Set("Connection", "close")
+	}
+
+	if cluster.FeatureEnabled(features.DenyAllRequests) {
+		d.responseError(errors.NewServiceUnavailable(fmt.Sprintf("request for %v denied by featureGate(DenyAllRequests)", extraInfo.Hostname)), w, req, statusReasonCircuitBreaker)
+		return
+	}
+
 	requestAttributes, err := filters.GetAuthorizerAttributes(ctx)
 	if err != nil {
 		d.responseError(errors.NewInternalError(err), w, req, statusReasonInvalidRequestContext)
@@ -162,6 +174,8 @@ func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWrite
 	gv := schema.GroupVersion{Group: "", Version: "v1"}
 	if errors.IsTooManyRequests(err) {
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+	} else if errors.IsServiceUnavailable(err) {
+		w.Header().Set("Retry-After", strconv.Itoa(retryAfter*30))
 	}
 
 	code := int(err.Status().Code)
