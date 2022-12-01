@@ -27,7 +27,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	"k8s.io/apimachinery/pkg/util/proxy"
 	"k8s.io/apiserver/pkg/endpoints/filters"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
@@ -64,27 +63,27 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 	user, ok := genericapirequest.UserFrom(ctx)
 	if !ok {
-		d.responseError(errors.NewInternalError(fmt.Errorf("no user info found in request context")), w, req, "no_user_info")
+		d.responseError(errors.NewInternalError(fmt.Errorf("no user info found in request context")), w, req, statusReasonInvalidRequestContext)
 		return
 	}
 	extraInfo, ok := request.ExtraReqeustInfoFrom(ctx)
 	if !ok {
-		d.responseError(errors.NewInternalError(fmt.Errorf("no extra request info found in request context")), w, req, "no_extra_request_info")
+		d.responseError(errors.NewInternalError(fmt.Errorf("no extra request info found in request context")), w, req, statusReasonInvalidRequestContext)
 		return
 	}
 	requestInfo, ok := genericapirequest.RequestInfoFrom(ctx)
 	if !ok {
-		d.responseError(errors.NewInternalError(fmt.Errorf("no request info found in request context")), w, req, "no_request_info")
+		d.responseError(errors.NewInternalError(fmt.Errorf("no request info found in request context")), w, req, statusReasonInvalidRequestContext)
 		return
 	}
 	cluster, ok := d.Get(extraInfo.Hostname)
 	if !ok {
-		d.responseError(errors.NewServiceUnavailable(fmt.Sprintf("the request cluster(%s) is not being proxied", extraInfo.Hostname)), w, req, "cluster_not_being_proxied")
+		d.responseError(errors.NewServiceUnavailable(fmt.Sprintf("the request cluster(%s) is not being proxied", extraInfo.Hostname)), w, req, statusReasonClusterNotBeingProxied)
 		return
 	}
 	requestAttributes, err := filters.GetAuthorizerAttributes(ctx)
 	if err != nil {
-		d.responseError(errors.NewInternalError(err), w, req, "error_authorizer_attributes")
+		d.responseError(errors.NewInternalError(err), w, req, statusReasonInvalidRequestContext)
 		return
 	}
 	endpointPicker, err := cluster.MatchAttributes(requestAttributes)
@@ -97,14 +96,14 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if !flowcontrol.TryAcquire() {
 		//TODO: exempt master request and long running request
 		// add metrics
-		d.responseError(errors.NewTooManyRequests(fmt.Sprintf("too many requests for cluster(%s), limited by flowControl(%v)", extraInfo.Hostname, flowcontrol.String()), retryAfter), w, req, "rate_limited")
+		d.responseError(errors.NewTooManyRequests(fmt.Sprintf("too many requests for cluster(%s), limited by flowControl(%v)", extraInfo.Hostname, flowcontrol.String()), retryAfter), w, req, statusReasonRateLimited)
 		return
 	}
 	defer flowcontrol.Release()
 
 	endpoint, err := endpointPicker.Pop()
 	if err != nil {
-		d.responseError(errors.NewServiceUnavailable(err.Error()), w, req, "no_ready_endpoints")
+		d.responseError(errors.NewServiceUnavailable(err.Error()), w, req, statusReasonNoReadyEndpoints)
 		return
 	}
 
@@ -115,7 +114,7 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	ep, err := url.Parse(endpoint.Endpoint)
 	if err != nil {
-		d.responseError(errors.NewInternalError(err), w, req, "failed_parse_endpoint")
+		d.responseError(errors.NewInternalError(err), w, req, statusReasonInvalidEndpoint)
 		return
 	}
 
@@ -149,7 +148,7 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	rw := responsewriter.WrapForHTTP1Or2(delegate)
 
-	proxyHandler := proxy.NewUpgradeAwareHandler(location, transport, false, false, d)
+	proxyHandler := NewUpgradeAwareHandler(location, transport, false, false, d)
 	proxyHandler.ServeHTTP(rw, newReq)
 }
 
@@ -179,10 +178,14 @@ func newRequestForProxy(location *url.URL, req *http.Request, _ string) (*http.R
 	return newReq, cancel
 }
 
-// implements ErrorResponder interface
+// implements k8s.io/apimachinery/pkg/util/proxy.ErrorResponder interface
 func (d *dispatcher) Error(w http.ResponseWriter, req *http.Request, err error) {
-	status := responsewriters.ErrorToAPIStatus(err)
-	d.responseError(&errors.StatusError{ErrStatus: *status}, w, req, "responder_errors")
+	status := errorToProxyStatus(err)
+	reason := statusReasonUpgradeAwareHandlerError
+	if status.Code == http.StatusBadGateway {
+		reason = statusReasonReverseProxyError
+	}
+	d.responseError(&errors.StatusError{ErrStatus: *status}, w, req, reason)
 }
 
 func normalizeErrToReason(err error) string {
