@@ -30,6 +30,14 @@ var (
 	statusReasonReverseProxyError        = "reverse_proxy_error"
 )
 
+func captureErrorReason(reason string) bool {
+	switch reason {
+	case statusReasonUpgradeAwareHandlerError, statusReasonReverseProxyError:
+		return true
+	}
+	return false
+}
+
 // statusError is an object that can be converted into an metav1.Status
 type statusError interface {
 	Status() metav1.Status
