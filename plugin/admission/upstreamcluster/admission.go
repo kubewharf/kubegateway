@@ -17,6 +17,7 @@ package upstreamclusteradmission
 import (
 	"context"
 
+	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apiserver/pkg/admission"
 	genericadmissioninitializer "k8s.io/apiserver/pkg/admission/initializer"
 	"k8s.io/client-go/informers"
@@ -24,6 +25,7 @@ import (
 
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1/validation"
+	"github.com/kubewharf/kubegateway/pkg/clusters/features"
 )
 
 var _ admission.Interface = &upstreamclusterPlugin{}
@@ -71,6 +73,16 @@ func (p *upstreamclusterPlugin) Validate(ctx context.Context, a admission.Attrib
 	}
 	cluster := a.GetObject().(*proxyv1alpha1.UpstreamCluster)
 	allErrs := validation.ValidateUpstreamCluster(cluster)
+
+	if cluster.Annotations != nil {
+		featuregate := cluster.Annotations[features.FeatureGateAnnotationKey]
+		if len(featuregate) > 0 {
+			copy := features.DefaultMutableFeatureGate.DeepCopy()
+			if err := copy.Set(featuregate); err != nil {
+				allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("annotations").Key(features.FeatureGateAnnotationKey), featuregate, err.Error()))
+			}
+		}
+	}
 
 	return allErrs.ToAggregate()
 }

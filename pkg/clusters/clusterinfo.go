@@ -32,9 +32,11 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/cert"
+	"k8s.io/component-base/featuregate"
 	"k8s.io/klog"
 
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
+	"github.com/kubewharf/kubegateway/pkg/clusters/features"
 	gatewayflowcontrol "github.com/kubewharf/kubegateway/pkg/flowcontrol"
 	"github.com/kubewharf/kubegateway/pkg/transport"
 )
@@ -127,6 +129,7 @@ type ClusterInfo struct {
 	currentDispatchPolicies atomic.Value
 	// current logging config
 	currentLoggingConfig atomic.Value
+	featuregate          featuregate.MutableFeatureGate
 
 	healthCheckIntervalSeconds time.Duration
 	endpointHeathCheck         EndpointHealthCheck
@@ -154,6 +157,7 @@ func NewEmptyClusterInfo(clusterName string, config *rest.Config, healthCheck En
 		flowcontrol:                gatewayflowcontrol.NewFlowControls(),
 		loadbalancer:               sync.Map{},
 		endpointHeathCheck:         healthCheck,
+		featuregate:                features.DefaultMutableFeatureGate.DeepCopy(),
 	}
 	return info
 }
@@ -287,6 +291,13 @@ func (c *ClusterInfo) Sync(cluster *proxyv1alpha1.UpstreamCluster) error {
 	// add or update endpoints
 	if err := c.syncEndpoints(cluster.Spec.Servers); err != nil {
 		return err
+	}
+
+	if cluster.Annotations != nil {
+		if err := c.syncFeatureGate(cluster.Annotations[features.FeatureGateAnnotationKey]); err != nil {
+			// we should never get here because there is validating admission
+			return err
+		}
 	}
 
 	// set dispatch policies
@@ -590,6 +601,17 @@ func (c *ClusterInfo) addOrUpdateEndpoint(endpoint string, disabled bool) error 
 	}
 
 	return nil
+}
+
+func (c *ClusterInfo) FeatureEnabled(key featuregate.Feature) bool {
+	return c.featuregate.Enabled(key)
+}
+
+func (c *ClusterInfo) syncFeatureGate(value string) error {
+	if len(value) == 0 {
+		return nil
+	}
+	return c.featuregate.Set(value)
 }
 
 // upstream policy    enabled

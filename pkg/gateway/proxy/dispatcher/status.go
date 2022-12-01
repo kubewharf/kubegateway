@@ -24,6 +24,7 @@ var (
 	statusReasonNoReadyEndpoints         = "no_ready_endpoints"
 	statusReasonClusterNotBeingProxied   = "cluster_not_being_proxied"
 	statusReasonInvalidRequestContext    = "invalid_request_context"
+	statusReasonCircuitBreaker           = "circuit_breaker"
 	statusReasonRateLimited              = "rate_limited"
 	statusReasonInvalidEndpoint          = "invalid_endpoint"
 	statusReasonUpgradeAwareHandlerError = "upgrade_aware_handler_error"
