@@ -133,6 +133,7 @@ func buildProxyHandlerChainFunc(clusterManager clusters.Manager, enableAccessLog
 		}
 		handler = genericapifilters.WithCacheControl(handler)
 		handler = gatewayfilters.WithNoLoggingPanicRecovery(handler)
+		handler = gatewayfilters.WithTerminationMetrics(handler)
 		return handler
 	}
 }

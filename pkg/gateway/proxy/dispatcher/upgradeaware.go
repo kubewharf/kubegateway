@@ -102,7 +102,6 @@ func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 		proxy.ErrorHandler = h.Responder.Error
 	}
 	proxy.ServeHTTP(w, newReq)
-
 }
 
 type noSuppressPanicError struct{}

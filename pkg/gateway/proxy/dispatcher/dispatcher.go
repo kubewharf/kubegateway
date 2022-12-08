@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
+	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apiserver/pkg/endpoints/filters"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
@@ -36,7 +37,6 @@ import (
 
 	"github.com/kubewharf/kubegateway/pkg/clusters"
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
-	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 	"github.com/kubewharf/kubegateway/pkg/gateway/net"
 )
 
@@ -118,6 +118,12 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// mark this proxy request forwarded
+	if err := request.SetProxyForwarded(req.Context(), endpoint.Endpoint); err != nil {
+		d.responseError(errors.NewInternalError(err), w, req, statusReasonInvalidRequestContext)
+		return
+	}
+
 	location := &url.URL{}
 	location.Scheme = ep.Scheme
 	location.Host = ep.Host
@@ -157,12 +163,21 @@ func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWrite
 	if errors.IsTooManyRequests(err) {
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
 	}
-	responsewriters.ErrorNegotiated(err, d.codecs, gv, w, req)
+
 	code := int(err.Status().Code)
-	metrics.RecordProxyRequestTermination(req, code, reason)
 	if captureErrorReason(reason) {
-		klog.Errorf("[proxy termination] method=%q host=%q URI=%q resp=%v reason=%q message=[%v]", req.Method, net.HostWithoutPort(req.Host), req.RequestURI, code, reason, err.Error())
+		var urlHost string
+		if req.URL != nil {
+			// url.Host is different from req.Host when caller is reverse proxy.
+			// we need this host to determine which endpoint it is if possible.
+			urlHost = req.URL.Host
+		}
+		klog.Errorf("[proxy termination] method=%q host=%q uri=%q url.host=%v resp=%v reason=%q message=[%v]", req.Method, net.HostWithoutPort(req.Host), req.RequestURI, urlHost, code, reason, err.Error())
 	}
+
+	runtime.Must(request.SetProxyTerminated(req.Context(), reason))
+
+	responsewriters.ErrorNegotiated(err, d.codecs, gv, w, req)
 }
 
 // newRequestForProxy returns a shallow copy of the original request with a context that may include a timeout for discovery requests

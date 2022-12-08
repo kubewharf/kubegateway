@@ -27,7 +27,11 @@ import (
 type key int
 
 const (
+	// requestInfoKey is the context key for the extra request info.
 	requestInfoKey key = iota
+
+	// proxyInfoKey is the context key for the proxy info.
+	proxyInfoKey key = iota
 )
 
 type ExtraRequestInfoResolver interface {
