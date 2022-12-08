@@ -26,6 +26,7 @@ import (
 	"k8s.io/apiserver/pkg/endpoints/responsewriter"
 	"k8s.io/klog"
 
+	gatewayrequest "github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
 	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 )
 
@@ -124,12 +125,19 @@ func (rw *responseWriterDelegator) MonitorBeforeProxy() {
 		metrics.RecordWatcherRegistered(rw.host, rw.endpoint, rw.requestInfo.Resource)
 		//TODO: log watch requests before proxy
 	}
+	// TODO: add a metrics before request forwarded
 }
 
 func (rw *responseWriterDelegator) MonitorAfterProxy() {
 	if rw.isWatch() {
 		metrics.RecordWatcherUnregistered(rw.host, rw.endpoint, rw.requestInfo.Resource)
 	}
+
+	if !gatewayrequest.IsProxyForwarded(rw.req.Context()) {
+		return
+	}
+
+	// we only monitor forwarded proxy reqeust here
 	metrics.MonitorProxyRequest(
 		rw.req,
 		rw.host,
