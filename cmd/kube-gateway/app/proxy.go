@@ -15,6 +15,8 @@
 package app
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 
 	"github.com/kubewharf/apiserver-runtime/pkg/scheme"
@@ -24,6 +26,7 @@ import (
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	genericfilters "k8s.io/apiserver/pkg/server/filters"
 	_ "k8s.io/component-base/metrics/prometheus/workqueue" // for workqueue metric registration
+	"k8s.io/klog"
 	"k8s.io/kube-openapi/pkg/common"
 
 	"github.com/kubewharf/kubegateway/cmd/kube-gateway/app/options"
@@ -53,6 +56,11 @@ func CreateProxyConfig(
 	if lastErr = o.SecureServing.ApplyTo(&recommendedConfig.SecureServing, *controlplaneOptions.SecureServing); lastErr != nil {
 		return
 	}
+
+	// customize http error log to filter out some noisy log
+	// referred to k8s.io/component-base/logs/logs.go#InitLogs()
+	recommendedConfig.SecureServing.ErrorLog = log.New(proxyHTTPErrorLogWriter{}, "", 0)
+
 	// create upstream controller
 	clusterController := controllers.NewUpstreamClusterController(controlplaneServerConfig.ExtraConfig.GatewaySharedInformerFactory.Proxy().V1alpha1().UpstreamClusters())
 	// Dynamic SNI for upstream cluster
@@ -131,4 +139,17 @@ func buildProxyHandlerChainFunc(clusterManager clusters.Manager, enableAccessLog
 
 func GetNativeOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenAPIDefinition {
 	return nativeopenapi.GetOpenAPIDefinitions(ref)
+}
+
+// proxyHTTPErrorLogWriter serves as a bridge between the standard log package and the klog package.
+// It also filter out some noisy http error log
+type proxyHTTPErrorLogWriter struct{}
+
+// Write implements the io.Writer interface.
+func (writer proxyHTTPErrorLogWriter) Write(data []byte) (n int, err error) {
+	if bytes.HasPrefix(data, []byte("http: TLS handshake error from")) {
+		return 0, nil
+	}
+	klog.InfoDepth(1, string(data))
+	return len(data), nil
 }
