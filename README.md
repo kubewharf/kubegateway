@@ -28,7 +28,7 @@ In terms of massive cluster proxies：
 ## Detailed Doc
 
 - [Design documentation](docs/en/design.md)
-- [Mannually Setup](docs/en/manually-setup.md)
+- [Manually Setup](docs/en/manually-setup.md)
 - [Develop Guide](docs/en/quick_start.md)
 - [Performance testing](docs/en/benchmark.md)
 
