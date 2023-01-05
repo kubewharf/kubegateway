@@ -25,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/apimachinery/pkg/util/httpstream"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apiserver/pkg/endpoints/filters"
@@ -119,11 +118,6 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	transport := endpoint.ProxyTransport
-	if httpstream.IsUpgradeRequest(req) {
-		transport = endpoint.PorxyUpgradeTransport
-	}
-
 	ep, err := url.Parse(endpoint.Endpoint)
 	if err != nil {
 		d.responseError(errors.NewInternalError(err), w, req, statusReasonInvalidEndpoint)
@@ -166,7 +160,7 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	rw := responsewriter.WrapForHTTP1Or2(delegate)
 
-	proxyHandler := NewUpgradeAwareHandler(location, transport, false, false, d, endpoint)
+	proxyHandler := NewUpgradeAwareHandler(location, endpoint.ProxyTransport, endpoint.PorxyUpgradeTransport, false, false, d, endpoint)
 	proxyHandler.ServeHTTP(rw, newReq)
 }
 
