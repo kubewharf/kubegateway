@@ -63,12 +63,22 @@ var (
 		"WATCH",
 		"WATCHLIST")
 
+	proxyReceiveRequestCounter = compbasemetrics.NewCounterVec(
+		&compbasemetrics.CounterOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "received_apiserver_request_total",
+			Help:           "Counter of received apiserver requests, it is recorded when this request occurs",
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"pid", "serverName", "verb", "resource"},
+	)
 	proxyRequestCounter = compbasemetrics.NewCounterVec(
 		&compbasemetrics.CounterOpts{
 			Namespace:      namespace,
 			Subsystem:      subsystem,
 			Name:           "apiserver_request_total",
-			Help:           "Counter of apiserver requests broken out for each serverName, endpoint, verb, resource and code.",
+			Help:           "Counter of proxied apiserver requests, it is recorded when this proxied request ends",
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{"pid", "serverName", "endpoint", "verb", "resource", "code"},
@@ -133,6 +143,7 @@ var (
 	)
 
 	localMetrics = []compbasemetrics.Registerable{
+		proxyReceiveRequestCounter,
 		proxyRequestCounter,
 		proxyRequestLatencies,
 		proxyResponseSizes,
@@ -160,6 +171,22 @@ func Register() {
 // RecordUnhealthyUpstream records that the upstream endpoint is unhealthy.
 func RecordUnhealthyUpstream(serverName string, endpoint string, reason string) {
 	proxyUpstreamUnhealthy.WithLabelValues(proxyPid, serverName, endpoint, reason).Inc()
+}
+
+func RecordProxyRequestReceived(req *http.Request, serverName string, requestInfo *request.RequestInfo) {
+	if requestInfo == nil {
+		requestInfo = &request.RequestInfo{Verb: req.Method, Path: req.URL.Path}
+	}
+	scope := CleanScope(requestInfo)
+	verb := canonicalVerb(strings.ToUpper(requestInfo.Verb), scope)
+	resource := "NonResourceRequest"
+	if requestInfo.IsResourceRequest {
+		resource = requestInfo.Resource
+		if len(requestInfo.Subresource) > 0 {
+			resource += "/" + requestInfo.Subresource
+		}
+	}
+	proxyReceiveRequestCounter.WithLabelValues(proxyPid, serverName, verb, resource).Inc()
 }
 
 // MonitorProxyRequest handles standard transformations for client and the reported verb and then invokes Monitor to record
