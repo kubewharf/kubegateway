@@ -73,7 +73,13 @@ func CreateProxyConfig(
 	// Dynamic SNI for upstream cluster
 	recommendedConfig.Config.SecureServing.DynamicClientConfig = clusterController
 	// Proxy handler
-	recommendedConfig.Config.BuildHandlerChainFunc = buildProxyHandlerChainFunc(clusterController, o.Logging.EnableProxyAccessLog)
+	oo := &proxyHandlerOptions{
+		clusterManager:        clusterController,
+		enableAccessLog:       o.Logging.EnableProxyAccessLog,
+		loadPressureThreshold: o.ServerRun.LoadPressureThreshold,
+		goawayChance:          o.ServerRun.GoawayChance,
+	}
+	recommendedConfig.Config.BuildHandlerChainFunc = buildProxyHandlerChainFunc(oo)
 
 	// Proxy authentication
 	if lastErr = o.Authentication.ApplyTo(
@@ -116,10 +122,17 @@ func buildProxyRecommenedOptions(o *options.ProxyOptions, controlplaneOptions *o
 	return recommenedOptions
 }
 
-func buildProxyHandlerChainFunc(clusterManager clusters.Manager, enableAccessLog bool) func(apiHandler http.Handler, c *genericapiserver.Config) http.Handler {
+type proxyHandlerOptions struct {
+	clusterManager        clusters.Manager
+	enableAccessLog       bool
+	loadPressureThreshold int
+	goawayChance          float64
+}
+
+func buildProxyHandlerChainFunc(o *proxyHandlerOptions) func(apiHandler http.Handler, c *genericapiserver.Config) http.Handler {
 	return func(apiHandler http.Handler, c *genericapiserver.Config) http.Handler {
 		// new gateway handler chain
-		handler := gatewayfilters.WithDispatcher(apiHandler, proxydispatcher.NewDispatcher(clusterManager, enableAccessLog))
+		handler := gatewayfilters.WithDispatcher(apiHandler, proxydispatcher.NewDispatcher(o.clusterManager, o.enableAccessLog))
 		// without impersonation log
 		handler = gatewayfilters.WithNoLoggingImpersonation(handler, c.Authorization.Authorizer, c.Serializer)
 		// new gateway handler chain, add impersonator userInfo
@@ -137,8 +150,8 @@ func buildProxyHandlerChainFunc(clusterManager clusters.Manager, enableAccessLog
 		handler = gatewayfilters.WithExtraRequestInfo(handler, &request.ExtraRequestInfoFactory{})
 		handler = gatewayfilters.WithTerminationMetrics(handler)
 		handler = gatewayfilters.WithRequestInfo(handler, c.RequestInfoResolver)
-		if c.SecureServing != nil && !c.SecureServing.DisableHTTP2 && c.GoawayChance > 0 {
-			handler = genericfilters.WithProbabilisticGoaway(handler, c.GoawayChance)
+		if c.SecureServing != nil && !c.SecureServing.DisableHTTP2 && o.goawayChance > 0 && o.loadPressureThreshold > 0 {
+			handler = gatewayfilters.WithLoadPressureGoaway(handler, o.loadPressureThreshold, o.goawayChance)
 		}
 		handler = genericapifilters.WithCacheControl(handler)
 		handler = gatewayfilters.WithNoLoggingPanicRecovery(handler)
