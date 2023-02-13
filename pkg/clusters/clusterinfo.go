@@ -293,11 +293,9 @@ func (c *ClusterInfo) Sync(cluster *proxyv1alpha1.UpstreamCluster) error {
 		return err
 	}
 
-	if cluster.Annotations != nil {
-		if err := c.syncFeatureGate(cluster.Annotations[features.FeatureGateAnnotationKey]); err != nil {
-			// we should never get here because there is validating admission
-			return err
-		}
+	if err := c.syncFeatureGate(cluster.Annotations); err != nil {
+		// we should never get here because there is validating admission
+		return err
 	}
 
 	// set dispatch policies
@@ -607,11 +605,19 @@ func (c *ClusterInfo) FeatureEnabled(key featuregate.Feature) bool {
 	return c.featuregate.Enabled(key)
 }
 
-func (c *ClusterInfo) syncFeatureGate(value string) error {
-	if len(value) == 0 {
+func (c *ClusterInfo) syncFeatureGate(annotations map[string]string) error {
+	var featuregate string
+	if annotations != nil {
+		featuregate = annotations[features.FeatureGateAnnotationKey]
+	}
+	if len(featuregate) == 0 {
+		if !features.IsDefault(c.featuregate) {
+			// reset featuregate
+			c.featuregate = features.DefaultMutableFeatureGate.DeepCopy()
+		}
 		return nil
 	}
-	return c.featuregate.Set(value)
+	return c.featuregate.Set(featuregate)
 }
 
 // upstream policy    enabled
