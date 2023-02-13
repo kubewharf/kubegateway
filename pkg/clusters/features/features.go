@@ -54,3 +54,14 @@ var (
 func init() {
 	runtime.Must(DefaultMutableFeatureGate.Add(defaultFeatureGates))
 }
+
+func IsDefault(fg featuregate.FeatureGate) bool {
+	features := DefaultFeatureGate.KnownFeatures()
+	for _, feature := range features {
+		if fg.Enabled(featuregate.Feature(feature)) !=
+			DefaultFeatureGate.Enabled(featuregate.Feature(feature)) {
+			return false
+		}
+	}
+	return true
+}
