@@ -15,6 +15,8 @@
 package features
 
 import (
+	"strings"
+
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/component-base/featuregate"
 )
@@ -49,17 +51,31 @@ var (
 		CloseConnectionWhenIdle: {Default: false, PreRelease: featuregate.Alpha},
 		DenyAllRequests:         {Default: false, PreRelease: featuregate.Alpha},
 	}
+
+	defaultKnownFeatures []string
 )
 
 func init() {
 	runtime.Must(DefaultMutableFeatureGate.Add(defaultFeatureGates))
+	defaultKnownFeatures = DefaultMutableFeatureGate.KnownFeatures()
 }
 
 func IsDefault(fg featuregate.FeatureGate) bool {
-	features := DefaultFeatureGate.KnownFeatures()
-	for _, feature := range features {
-		if fg.Enabled(featuregate.Feature(feature)) !=
-			DefaultFeatureGate.Enabled(featuregate.Feature(feature)) {
+	// output features is already sorted
+	inputFeatures := fg.KnownFeatures()
+	if len(defaultKnownFeatures) != len(inputFeatures) {
+		return false
+	}
+
+	for i, featureDesc := range defaultKnownFeatures {
+		// feature is described as DenyAllRequests=true|false (ALPHA - default=false)
+		if featureDesc != inputFeatures[i] {
+			return false
+		}
+
+		token := strings.SplitN(featureDesc, "=", 2)
+		key := featuregate.Feature(token[0])
+		if DefaultFeatureGate.Enabled(key) != fg.Enabled(key) {
 			return false
 		}
 	}
