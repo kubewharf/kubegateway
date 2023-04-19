@@ -606,10 +606,7 @@ func (c *ClusterInfo) FeatureEnabled(key featuregate.Feature) bool {
 }
 
 func (c *ClusterInfo) syncFeatureGate(annotations map[string]string) error {
-	var featuregate string
-	if annotations != nil {
-		featuregate = annotations[features.FeatureGateAnnotationKey]
-	}
+	featuregate := annotations[features.FeatureGateAnnotationKey]
 	if len(featuregate) == 0 {
 		if !features.IsDefault(c.featuregate) {
 			// reset featuregate
