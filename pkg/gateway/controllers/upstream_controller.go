@@ -71,7 +71,6 @@ func (m *UpstreamClusterController) Run(stopCh <-chan struct{}) {
 	m.queue.Run(1)
 	defer func() {
 		m.queue.ShutDown()
-		m.DeleteAll()
 	}()
 	<-stopCh
 }
