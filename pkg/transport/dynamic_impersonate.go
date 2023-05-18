@@ -21,7 +21,6 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/net"
-	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/client-go/transport"
 	"k8s.io/klog"
@@ -66,7 +65,7 @@ func (rt *dynamicImpersonatingRoundTripper) RoundTrip(req *http.Request) (*http.
 		klog.Infof("    Extra: %s", extraToString(requestor.GetExtra()))
 	}
 
-	req = utilnet.CloneRequest(req)
+	req = net.CloneRequest(req)
 	req.Header.Set(transport.ImpersonateUserHeader, requestor.GetName())
 
 	for _, group := range requestor.GetGroups() {
