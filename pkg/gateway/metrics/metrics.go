@@ -128,7 +128,7 @@ var (
 			Help:           "Number of requests which proxy terminated in self-defense.",
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
-		[]string{"pid", "serverName", "verb", "path", "code", "reason"},
+		[]string{"pid", "serverName", "verb", "path", "code", "reason", "resource"},
 	)
 	// proxyRegisteredWatchers is a number of currently registered watchers splitted by resource.
 	proxyRegisteredWatchers = compbasemetrics.NewGaugeVec(
@@ -236,7 +236,10 @@ func RecordProxyRequestTermination(req *http.Request, code int, reason string) {
 		verb = OtherRequestMethod
 	}
 	serverName := net.HostWithoutPort(req.Host)
-	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, serverName, cleanVerb(verb, req), requestInfo.Path, codeToString(code), reason).Inc()
+
+	resource := cleanResource(requestInfo)
+
+	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, serverName, cleanVerb(verb, req), requestInfo.Path, codeToString(code), reason, resource).Inc()
 }
 
 func RecordWatcherRegistered(serverName, endpoint, resource string) {
@@ -300,6 +303,17 @@ func cleanVerb(verb string, request *http.Request) string {
 		return reportedVerb
 	}
 	return OtherRequestMethod
+}
+
+func cleanResource(requestInfo *request.RequestInfo) string {
+	resource := "NonResourceRequest"
+	if requestInfo.IsResourceRequest {
+		resource = requestInfo.Resource
+		if len(requestInfo.Subresource) > 0 {
+			resource += "/" + requestInfo.Subresource
+		}
+	}
+	return resource
 }
 
 // Small optimization over Itoa
