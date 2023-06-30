@@ -91,6 +91,14 @@ func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 		newReq.URL = &loc
 	}
 
+	defer func() {
+		if r := recover(); r != nil {
+			klog.Errorf("reverseproxy panic'd on %v %v, err: %v", req.Method, req.RequestURI, r)
+			// Send a GOAWAY and tear down the TCP connection when idle.
+			w.Header().Set("Connection", "close")
+		}
+	}()
+
 	proxy := httputil.NewSingleHostReverseProxy(&url.URL{Scheme: h.Location.Scheme, Host: h.Location.Host})
 	proxy.Transport = h.Transport
 	proxy.FlushInterval = h.FlushInterval
