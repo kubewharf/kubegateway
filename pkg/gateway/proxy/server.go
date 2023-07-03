@@ -16,6 +16,8 @@ package server
 
 import (
 	apiserver "github.com/kubewharf/apiserver-runtime/pkg/server"
+	metricsregistry "github.com/kubewharf/kubegateway/pkg/gateway/metrics/registry"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
 	"k8s.io/kubernetes/pkg/master"
@@ -58,6 +60,8 @@ func (c *CompletedConfig) New(delegationTarget genericapiserver.DelegationTarget
 	if err != nil {
 		return nil, err
 	}
+
+	s.Handler.NonGoRestfulMux.Handle("/metrics", promhttp.HandlerFor(metricsregistry.DefaultGatherer, promhttp.HandlerOpts{}))
 
 	if c.ExtraConfig.UpstreamClusterController != nil {
 		// start upstream controller
