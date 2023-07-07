@@ -27,7 +27,6 @@ import (
 	"github.com/pkg/errors"
 	"github.com/zoumo/goset"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -532,6 +531,7 @@ func (c *ClusterInfo) addOrUpdateEndpoint(endpoint string, disabled bool) error 
 	info, ok := c.Endpoints.Load(endpoint)
 	if ok {
 		info.SetDisabled(disabled)
+		EnsureGatewayHealthCheck(info, c.healthCheckIntervalSeconds, info.ctx)
 		return nil
 	}
 
@@ -577,26 +577,13 @@ func (c *ClusterInfo) addOrUpdateEndpoint(endpoint string, disabled bool) error 
 		proxyUpgradeConfig:    &upgradeConfigCopy,
 		PorxyUpgradeTransport: ts2,
 		clientset:             client,
+		healthCheckFun:        c.endpointHeathCheck,
 	}
 
 	klog.Infof("[cluster info] new endpoint added, cluster=%q, endpoint=%q", c.Cluster, info.Endpoint)
 	c.Endpoints.Store(endpoint, info)
 
-	if c.endpointHeathCheck != nil {
-		go func() {
-			klog.V(2).Infof("[endpoint info] start health checking for cluster=%q, endpoint=%q", c.Cluster, info.Endpoint)
-			defer klog.V(2).Infof("[endpoint info] stop health checking for cluster=%q, endpoint=%q", c.Cluster, info.Endpoint)
-			//nolint
-			wait.PollImmediateUntil(
-				c.healthCheckIntervalSeconds,
-				func() (done bool, err error) {
-					done = c.endpointHeathCheck(info)
-					return
-				},
-				info.ctx.Done(),
-			)
-		}()
-	}
+	EnsureGatewayHealthCheck(info, c.healthCheckIntervalSeconds, info.ctx)
 
 	return nil
 }

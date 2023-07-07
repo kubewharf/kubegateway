@@ -21,6 +21,7 @@ import (
 	"net/url"
 	"strings"
 
+	"github.com/kubewharf/kubegateway/pkg/clusters"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -35,13 +36,15 @@ import (
 // UpgradeAwareHandler is a handler for proxy requests that may require an upgrade
 type UpgradeAwareHandler struct {
 	*proxy.UpgradeAwareHandler
+	endpoint *clusters.EndpointInfo
 }
 
 // NewUpgradeAwareHandler creates a new proxy handler with a default flush interval. Responder is required for returning
 // errors to the caller.
-func NewUpgradeAwareHandler(location *url.URL, transport http.RoundTripper, wrapTransport, upgradeRequired bool, responder proxy.ErrorResponder) *UpgradeAwareHandler {
+func NewUpgradeAwareHandler(location *url.URL, transport http.RoundTripper, wrapTransport, upgradeRequired bool, responder proxy.ErrorResponder, endpoint *clusters.EndpointInfo) *UpgradeAwareHandler {
 	return &UpgradeAwareHandler{
 		UpgradeAwareHandler: proxy.NewUpgradeAwareHandler(location, transport, wrapTransport, upgradeRequired, responder),
+		endpoint:            endpoint,
 	}
 }
 
@@ -93,7 +96,7 @@ func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 
 	defer func() {
 		if r := recover(); r != nil {
-			klog.Errorf("reverseproxy panic'd on %v %v, err: %v", req.Method, req.RequestURI, r)
+			klog.Errorf("reverseproxy panic'd on %v %v, endpoint: %v, err: %v", req.Method, req.RequestURI, h.Location.Host, r)
 			// Send a GOAWAY and tear down the TCP connection when idle.
 			w.Header().Set("Connection", "close")
 		}
@@ -108,6 +111,14 @@ func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 		// the custom responder might be used for providing a unified error reporting
 		// or supporting retry mechanisms by not sending non-fatal errors to the clients
 		proxy.ErrorHandler = h.Responder.Error
+		proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
+			if utilnet.IsConnectionRefused(err) {
+				klog.Errorf("connection refused err: %v, trigger healthcheck", err)
+				h.endpoint.TriggerHealthCheck()
+			}
+
+			h.Responder.Error(w, req, err)
+		}
 	}
 	proxy.ServeHTTP(w, newReq)
 }

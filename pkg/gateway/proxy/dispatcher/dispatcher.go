@@ -166,7 +166,7 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	rw := responsewriter.WrapForHTTP1Or2(delegate)
 
-	proxyHandler := NewUpgradeAwareHandler(location, transport, false, false, d)
+	proxyHandler := NewUpgradeAwareHandler(location, transport, false, false, d, endpoint)
 	proxyHandler.ServeHTTP(rw, newReq)
 }
 
