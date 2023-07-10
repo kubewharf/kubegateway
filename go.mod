@@ -53,7 +53,7 @@ replace (
 	k8s.io/api => k8s.io/api v0.18.10
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.18.10
 	k8s.io/apimachinery => k8s.io/apimachinery v0.18.19
-	k8s.io/apiserver => github.com/kubewharf/apiserver v0.0.0-20221205074449-c9a9618c9e6c
+	k8s.io/apiserver => github.com/kubewharf/apiserver v0.0.0-20230515081716-5cd2041a3c4d
 	k8s.io/cli-runtime => k8s.io/cli-runtime v0.18.10
 	k8s.io/client-go => k8s.io/client-go v0.18.10
 	k8s.io/cloud-provider => k8s.io/cloud-provider v0.18.10
