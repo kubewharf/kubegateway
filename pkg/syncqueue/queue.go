@@ -347,8 +347,8 @@ func isExpectedGVK(scheme *runtime.Scheme, gvk schema.GroupVersionKind, obj runt
 	}
 
 	found := false
-	for _, gvk := range gvks {
-		if reflect.DeepEqual(gvk, gvk) {
+	for _, item := range gvks {
+		if reflect.DeepEqual(item, gvk) {
 			found = true
 			break
 		}
