@@ -15,14 +15,17 @@
 package dispatcher
 
 import (
+	"context"
+	"errors"
 	"log"
 	"net/http"
-	"net/http/httputil"
 	"net/url"
 	"strings"
 
 	"github.com/kubewharf/kubegateway/pkg/clusters"
-	"k8s.io/apimachinery/pkg/api/errors"
+	"github.com/kubewharf/kubegateway/pkg/gateway/httputil"
+	"github.com/kubewharf/kubegateway/pkg/gateway/net"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/proxy"
@@ -56,7 +59,7 @@ func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 	}
 
 	if h.UpgradeRequired {
-		h.Responder.Error(w, req, errors.NewBadRequest("Upgrade request required"))
+		h.Responder.Error(w, req, apierrors.NewBadRequest("Upgrade request required"))
 		return
 	}
 
@@ -111,16 +114,34 @@ func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 		// the custom responder might be used for providing a unified error reporting
 		// or supporting retry mechanisms by not sending non-fatal errors to the clients
 		proxy.ErrorHandler = h.Responder.Error
-		proxy.ErrorHandler = func(w http.ResponseWriter, req *http.Request, err error) {
-			if utilnet.IsConnectionRefused(err) {
-				klog.Errorf("connection refused err: %v, trigger healthcheck", err)
-				h.endpoint.TriggerHealthCheck()
-			}
-
-			h.Responder.Error(w, req, err)
-		}
+		proxy.ErrorHandler = h.ErrorHandler
 	}
 	proxy.ServeHTTP(w, newReq)
+
+}
+
+func (h *UpgradeAwareHandler) ErrorHandler(w http.ResponseWriter, req *http.Request, err error) {
+	if utilnet.IsConnectionRefused(err) {
+		klog.Errorf("connection refused err: %v, trigger healthcheck", err)
+		h.endpoint.TriggerHealthCheck()
+	}
+
+	if errors.Is(err, http.ErrAbortHandler) {
+		err = errors.Unwrap(err)
+		switch {
+		case errors.Is(err, context.Canceled), strings.Contains(err.Error(), "client disconnected"):
+			// ignore request canceled or client disconnected
+			klog.V(5).Infof("connection closed: remoteAddr=%v, endpoint=%v, err: %v", req.RemoteAddr, h.Location.Host, err)
+			return
+		case strings.Contains(err.Error(), "http2: server sent GOAWAY and closed the connection"):
+			klog.V(4).Infof("connection closed: remoteAddr=%v, endpoint=%v, err: %v", req.RemoteAddr, h.Location.Host, err)
+			w.Header().Set("Connection", "close")
+		default:
+			klog.Errorf("request abort: method=%v host=%v uri=%q endpoint=%v, err: %v", req.Method, net.HostWithoutPort(req.Host), req.RequestURI, h.Location.Host, err)
+		}
+	}
+
+	h.Responder.Error(w, req, err)
 }
 
 type noSuppressPanicError struct{}
