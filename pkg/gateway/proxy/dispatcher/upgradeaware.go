@@ -19,13 +19,13 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"os"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/proxy"
+	"k8s.io/klog"
 )
 
 // NOTICE: most of the following codes are copied from k8s.io/apimachinery/pkg/util/proxy/upgradeawarehandler.go
@@ -113,7 +113,8 @@ func (noSuppressPanicError) Write(p []byte) (n int, err error) {
 	if strings.Contains(string(p), "suppressing panic") {
 		return len(p), nil
 	}
-	return os.Stderr.Write(p)
+	klog.ErrorDepth(4, string(p))
+	return len(p), nil
 }
 
 func (h *UpgradeAwareHandler) defaultProxyTransport(url *url.URL, internalTransport http.RoundTripper) http.RoundTripper {
