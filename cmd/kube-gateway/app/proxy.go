@@ -128,13 +128,13 @@ func buildProxyHandlerChainFunc(clusterManager clusters.Manager, enableAccessLog
 		// new gateway handler chain
 		handler = gatewayfilters.WithPreProcessingMetrics(handler)
 		handler = gatewayfilters.WithExtraRequestInfo(handler, &request.ExtraRequestInfoFactory{})
+		handler = gatewayfilters.WithTerminationMetrics(handler)
 		handler = genericapifilters.WithRequestInfo(handler, c.RequestInfoResolver)
 		if c.SecureServing != nil && !c.SecureServing.DisableHTTP2 && c.GoawayChance > 0 {
 			handler = genericfilters.WithProbabilisticGoaway(handler, c.GoawayChance)
 		}
 		handler = genericapifilters.WithCacheControl(handler)
 		handler = gatewayfilters.WithNoLoggingPanicRecovery(handler)
-		handler = gatewayfilters.WithTerminationMetrics(handler)
 		return handler
 	}
 }

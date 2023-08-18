@@ -128,7 +128,7 @@ var (
 			Help:           "Number of requests which proxy terminated in self-defense.",
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
-		[]string{"pid", "serverName", "verb", "path", "code", "reason"},
+		[]string{"pid", "serverName", "verb", "path", "code", "reason", "resource"},
 	)
 	// proxyRegisteredWatchers is a number of currently registered watchers splitted by resource.
 	proxyRegisteredWatchers = compbasemetrics.NewGaugeVec(
@@ -178,7 +178,7 @@ func RecordProxyRequestReceived(req *http.Request, serverName string, requestInf
 		requestInfo = &request.RequestInfo{Verb: req.Method, Path: req.URL.Path}
 	}
 	scope := CleanScope(requestInfo)
-	verb := canonicalVerb(strings.ToUpper(requestInfo.Verb), scope)
+	verb := canonicalVerb(requestInfo, scope)
 	resource := "NonResourceRequest"
 	if requestInfo.IsResourceRequest {
 		resource = requestInfo.Resource
@@ -197,7 +197,7 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint string, request
 	}
 
 	scope := CleanScope(requestInfo)
-	verb := canonicalVerb(strings.ToUpper(requestInfo.Verb), scope)
+	verb := canonicalVerb(requestInfo, scope)
 	elapsedSeconds := elapsed.Seconds()
 	resource := "NonResourceRequest"
 	if requestInfo.IsResourceRequest {
@@ -230,13 +230,16 @@ func RecordProxyRequestTermination(req *http.Request, code int, reason string) {
 	// in installer.go with predefined list of verbs (different than those
 	// translated to RequestInfo).
 	// However, we need to tweak it e.g. to differentiate GET from LIST.
-	verb := canonicalVerb(strings.ToUpper(requestInfo.Verb), scope)
+	verb := canonicalVerb(requestInfo, scope)
 	// set verbs to a bounded set of known and expected verbs
 	if !validRequestMethods.Has(verb) {
 		verb = OtherRequestMethod
 	}
 	serverName := net.HostWithoutPort(req.Host)
-	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, serverName, cleanVerb(verb, req), requestInfo.Path, codeToString(code), reason).Inc()
+
+	resource := cleanResource(requestInfo)
+
+	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, serverName, cleanVerb(verb, req), requestInfo.Path, codeToString(code), reason, resource).Inc()
 }
 
 func RecordWatcherRegistered(serverName, endpoint, resource string) {
@@ -262,7 +265,12 @@ func CleanScope(requestInfo *request.RequestInfo) string {
 	return ""
 }
 
-func canonicalVerb(verb string, scope string) string {
+func canonicalVerb(requestInfo *request.RequestInfo, scope string) string {
+	verb := strings.ToUpper(requestInfo.Verb)
+	if !requestInfo.IsResourceRequest {
+		return verb
+	}
+
 	switch verb {
 	case "GET", "HEAD":
 		if scope != "resource" {
@@ -295,6 +303,17 @@ func cleanVerb(verb string, request *http.Request) string {
 		return reportedVerb
 	}
 	return OtherRequestMethod
+}
+
+func cleanResource(requestInfo *request.RequestInfo) string {
+	resource := "NonResourceRequest"
+	if requestInfo.IsResourceRequest {
+		resource = requestInfo.Resource
+		if len(requestInfo.Subresource) > 0 {
+			resource += "/" + requestInfo.Subresource
+		}
+	}
+	return resource
 }
 
 // Small optimization over Itoa
