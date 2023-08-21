@@ -33,7 +33,7 @@ var (
 
 func captureErrorReason(reason string) bool {
 	switch reason {
-	case statusReasonUpgradeAwareHandlerError, statusReasonReverseProxyError:
+	case statusReasonUpgradeAwareHandlerError, statusReasonReverseProxyError, statusReasonInvalidEndpoint:
 		return true
 	}
 	return false
