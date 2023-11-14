@@ -27,6 +27,7 @@ import (
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	gatewayinformers "github.com/kubewharf/kubegateway/pkg/client/informers"
 	gatewayclientset "github.com/kubewharf/kubegateway/pkg/client/kubernetes"
+	"github.com/kubewharf/kubegateway/pkg/gateway/controlplane/bootstrap"
 
 	// RESTStorage installers
 	rbacrest "k8s.io/kubernetes/pkg/registry/rbac/rest"
@@ -102,6 +103,12 @@ func (c *CompletedConfig) New(delegationTarget genericapiserver.DelegationTarget
 	err = apiserver.InstallAPIs(s, c.GenericConfig.MergedResourceConfig, c.GenericConfig.RESTOptionsGetter, restStorageProviders...)
 	if err != nil {
 		return nil, err
+	}
+
+	for hookName, hook := range bootstrap.PostStartHooks() {
+		if !c.GenericConfig.Config.DisabledPostStartHooks.Has(hookName) {
+			s.AddPostStartHookOrDie(hookName, hook)
+		}
 	}
 
 	return apiserver.New(name, s), nil
