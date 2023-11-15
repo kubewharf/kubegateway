@@ -15,11 +15,19 @@
 package filters
 
 import (
+	"net"
 	"net/http"
+
+	gatewaynet "github.com/kubewharf/kubegateway/pkg/gateway/net"
 )
 
 func WithDispatcher(handler http.Handler, dispacher http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		hostname := gatewaynet.HostWithoutPort(req.Host)
+		if ip := net.ParseIP(hostname); ip != nil {
+			handler.ServeHTTP(w, req)
+			return
+		}
 		dispacher.ServeHTTP(w, req)
 	})
 }
