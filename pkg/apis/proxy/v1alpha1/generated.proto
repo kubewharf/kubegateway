@@ -153,6 +153,14 @@ message DispatchPolicyRule {
   repeated string nonResourceURLs = 8;
 }
 
+message EndpointInfo {
+  optional string Leader = 1;
+
+  optional int32 shardID = 2;
+
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.Time lastHeartbeat = 3;
+}
+
 // Represents no limit flow control.
 message ExemptFlowControlSchema {
 }
@@ -167,6 +175,8 @@ message FlowControlSchema {
 
   // Schema config
   optional FlowControlSchemaConfiguration flowControlSchemaConfiguration = 2;
+
+  optional string strategy = 3;
 }
 
 // Represents the configuration of flow control schema
@@ -186,6 +196,48 @@ message FlowControlSchemaConfiguration {
   // rate of 'qps'.
   // +optianal
   optional TokenBucketFlowControlSchema tokenBucket = 3;
+
+  // GlobalMaxRequestsInflight represents a maximum global concurrent number of requests
+  // in flight at a given time.
+  // +optianal
+  optional MaxRequestsInflightFlowControlSchema globalMaxRequestsInflight = 4;
+
+  // GlobalTokenBucket represents a global token bucket approach. The rate limiter allows bursts
+  // of up to 'burst' to exceed the QPS, while still maintaining a smoothed qps
+  // rate of 'qps'.
+  // +optianal
+  optional TokenBucketFlowControlSchema globalTokenBucket = 5;
+}
+
+message LimitAcceptResult {
+  optional string flowControl = 1;
+
+  optional bool accept = 2;
+
+  optional int32 limit = 3;
+
+  optional string error = 4;
+}
+
+// Represents token bucket rate limit approach.
+message LimitItemDetail {
+  // MaxRequestsInflight represents a maximum concurrent number of requests
+  // in flight at a given time.
+  // +optianal
+  optional MaxRequestsInflightFlowControlSchema maxRequestsInflight = 1;
+
+  // TokenBucket represents a token bucket approach. The rate limiter allows bursts
+  // of up to 'burst' to exceed the QPS, while still maintaining a smoothed qps
+  // rate of 'qps'.
+  // +optianal
+  optional TokenBucketFlowControlSchema tokenBucket = 2;
+}
+
+message LimitRequest {
+  optional string flowControl = 1;
+
+  // Limit tokens required of this flowcontrol
+  optional int32 tokens = 2;
 }
 
 message LoggingConfig {
@@ -201,6 +253,89 @@ message LoggingConfig {
 message MaxRequestsInflightFlowControlSchema {
   // maximum concurrent number of requests
   optional int32 max = 1;
+}
+
+// RateLimitCondition is the Schema for the upstreamclusters API
+message RateLimitCondition {
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
+
+  optional RateLimitSpec spec = 2;
+
+  optional RateLimitStatus status = 3;
+}
+
+// RateLimitConditionList contains a list of RateLimitCondition
+message RateLimitConditionList {
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ListMeta metadata = 1;
+
+  repeated RateLimitCondition items = 2;
+}
+
+message RateLimitItemConfiguration {
+  // Schema name
+  optional string name = 1;
+
+  // Expect limit config detail
+  optional LimitItemDetail expect = 2;
+
+  optional string strategy = 3;
+}
+
+message RateLimitItemStatus {
+  // Schema name
+  optional string name = 1;
+
+  // Current limit status detail
+  optional LimitItemDetail current = 2;
+
+  // percent of ( actual requests / limit threshold )
+  optional int32 requestLevel = 3;
+}
+
+message RateLimitServerInfo {
+  optional string server = 1;
+
+  optional string id = 2;
+
+  optional string version = 3;
+
+  optional int32 shardCount = 4;
+
+  repeated int32 managedShards = 5;
+
+  repeated EndpointInfo endpoints = 6;
+}
+
+// RateLimitSpec defines the expect rate limit state of UpstreamCluster
+message RateLimitSpec {
+  // All rate limit requests must specify a upstreamCluster.
+  optional string upstreamCluster = 1;
+
+  // Rate limit client instance identity
+  optional string instance = 2;
+
+  // Client flow control settings, e.g. qps and burst
+  repeated RateLimitItemConfiguration limitItemConfigurations = 3;
+}
+
+// RateLimitStatus defines the rate limit state of UpstreamCluster
+message RateLimitStatus {
+  // Client flow control settings, e.g. qps and burst
+  repeated RateLimitItemStatus limitItemStatuses = 1;
+}
+
+// ReteLimitRequest defines the request body to do limit
+message ReteLimitRequest {
+  // Rate limit client instance identity
+  optional string instance = 1;
+
+  // Limit tokens requested
+  repeated LimitRequest requests = 2;
+}
+
+// ReteLimitResult defines the response body to do limit
+message ReteLimitResult {
+  repeated LimitAcceptResult results = 1;
 }
 
 message SecretReferecence {

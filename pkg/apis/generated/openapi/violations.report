@@ -13,6 +13,13 @@ API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/
 API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,DispatchPolicyRule,Users
 API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,DispatchPolicyRule,Verbs
 API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,FlowControl,Schemas
+API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,RateLimitConditionList,Items
+API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,RateLimitServerInfo,Endpoints
+API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,RateLimitServerInfo,ManagedShards
+API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,RateLimitSpec,LimitItemConfigurations
+API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,RateLimitStatus,LimitItemStatuses
+API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,ReteLimitRequest,Requests
+API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,ReteLimitResult,Results
 API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,SecureServing,CertData
 API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,SecureServing,ClientCAData
 API rule violation: list_type_missing,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,SecureServing,KeyData
@@ -47,6 +54,8 @@ API rule violation: list_type_missing,k8s.io/apimachinery/pkg/apis/meta/v1,Table
 API rule violation: list_type_missing,k8s.io/apimachinery/pkg/apis/meta/v1,UpdateOptions,DryRun
 API rule violation: list_type_missing,k8s.io/apimachinery/pkg/runtime,RawExtension,Raw
 API rule violation: list_type_missing,k8s.io/apimachinery/pkg/runtime,Unknown,Raw
+API rule violation: names_match,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,EndpointInfo,LastChange
+API rule violation: names_match,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,EndpointInfo,Leader
 API rule violation: names_match,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,FlowControl,Schemas
 API rule violation: names_match,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,matcher,reverse
 API rule violation: names_match,github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1,matcher,value

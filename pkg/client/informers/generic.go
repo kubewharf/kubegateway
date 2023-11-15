@@ -53,6 +53,8 @@ func (f *genericInformer) Lister() cache.GenericLister {
 func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource) (GenericInformer, error) {
 	switch resource {
 	// Group=proxy.kubegateway.io, Version=v1alpha1
+	case v1alpha1.SchemeGroupVersion.WithResource("ratelimitconditions"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Proxy().V1alpha1().RateLimitConditions().Informer()}, nil
 	case v1alpha1.SchemeGroupVersion.WithResource("upstreamclusters"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Proxy().V1alpha1().UpstreamClusters().Informer()}, nil
 

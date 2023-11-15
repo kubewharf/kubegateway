@@ -18,6 +18,10 @@ limitations under the License.
 
 package v1alpha1
 
+// RateLimitConditionListerExpansion allows custom methods to be added to
+// RateLimitConditionLister.
+type RateLimitConditionListerExpansion interface{}
+
 // UpstreamClusterListerExpansion allows custom methods to be added to
 // UpstreamClusterLister.
 type UpstreamClusterListerExpansion interface{}
