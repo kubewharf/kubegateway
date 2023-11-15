@@ -166,15 +166,17 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 
 	rw := responsewriter.WrapForHTTP1Or2(delegate)
 
-	proxyHandler := NewUpgradeAwareHandler(location, transport, false, false, d)
+	proxyHandler := NewUpgradeAwareHandler(location, transport, false, false, d, endpoint)
 	proxyHandler.ServeHTTP(rw, newReq)
 }
 
 func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWriter, req *http.Request, reason string) {
 	gv := schema.GroupVersion{Group: "", Version: "v1"}
-	if errors.IsTooManyRequests(err) {
+
+	switch {
+	case errors.IsTooManyRequests(err), utilnet.IsProbableEOF(err):
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
-	} else if errors.IsServiceUnavailable(err) {
+	case errors.IsServiceUnavailable(err):
 		w.Header().Set("Retry-After", strconv.Itoa(retryAfter*30))
 	}
 
