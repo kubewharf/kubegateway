@@ -19,6 +19,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,6 +28,8 @@ import (
 	"github.com/pkg/errors"
 	"github.com/zoumo/goset"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/util/net"
+	"k8s.io/apimachinery/pkg/util/proxy"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -552,6 +555,10 @@ func (c *ClusterInfo) addOrUpdateEndpoint(endpoint string, disabled bool) error 
 		klog.Errorf("failed to create http/1.1 transport for <cluster:%s,endpoint:%s>, err: %v", c.Cluster, endpoint, err)
 		return err
 	}
+	urrt, ok := unwrapUpgradeRequestRoundTripper(ts2)
+	if !ok {
+		klog.Errorf("failed to convert transport to proxy.UpgradeRequestRoundTripper for <cluster:%s,endpoint:%s>", c.Cluster, endpoint)
+	}
 
 	client, err := kubernetes.NewForConfig(&http2configCopy)
 	if err != nil {
@@ -575,7 +582,7 @@ func (c *ClusterInfo) addOrUpdateEndpoint(endpoint string, disabled bool) error 
 		proxyConfig:           &http2configCopy,
 		ProxyTransport:        ts,
 		proxyUpgradeConfig:    &upgradeConfigCopy,
-		PorxyUpgradeTransport: ts2,
+		PorxyUpgradeTransport: urrt,
 		clientset:             client,
 		healthCheckFun:        c.endpointHeathCheck,
 	}
@@ -618,4 +625,25 @@ func isLogEnabled(upstream, policy proxyv1alpha1.LogMode) bool {
 		return true
 	}
 	return false
+}
+
+func unwrapUpgradeRequestRoundTripper(rt http.RoundTripper) (proxy.UpgradeRequestRoundTripper, bool) {
+	urrt, ok := rt.(proxy.UpgradeRequestRoundTripper)
+	if ok {
+		return urrt, ok
+	}
+
+	var rtw net.RoundTripperWrapper
+	var isWrapper bool
+	rtw, isWrapper = rt.(net.RoundTripperWrapper)
+	for isWrapper {
+		rt = rtw.WrappedRoundTripper()
+		urrt, found := rt.(proxy.UpgradeRequestRoundTripper)
+		if found {
+			return urrt, true
+		}
+		rtw, isWrapper = rt.(net.RoundTripperWrapper)
+	}
+
+	return nil, false
 }
