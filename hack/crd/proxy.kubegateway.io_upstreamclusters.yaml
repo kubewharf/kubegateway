@@ -1,0 +1,350 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.9.2
+  creationTimestamp: null
+  name: upstreamclusters.proxy.kubegateway.io
+spec:
+  group: proxy.kubegateway.io
+  names:
+    kind: UpstreamCluster
+    listKind: UpstreamClusterList
+    plural: upstreamclusters
+    singular: upstreamcluster
+  scope: cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: UpstreamCluster is the Schema for the upstreamclusters API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: UpstreamClusterSpec defines the desired state of UpstreamCluster
+            properties:
+              clientConfig:
+                description: Client connection config for upstream api servers
+                properties:
+                  bearerToken:
+                    description: BearerToken is the bearer token for authentication.
+                      It can be an service account token.
+                    format: byte
+                    type: string
+                  burst:
+                    description: Maximum burst for throttle. Zero means no limit This
+                      value must be bigger than QPS if QPS is not 0
+                    format: int32
+                    type: integer
+                  caData:
+                    description: CAData contains PEM-encoded data from a ca file for
+                      TLS. The serialized form of data is a base64 encoded string
+                    format: byte
+                    type: string
+                  certData:
+                    description: CertData contains PEM-encoded data from a client
+                      cert file for TLS. The serialized form of data is a base64 encoded
+                      string
+                    format: byte
+                    type: string
+                  insecure:
+                    description: Server should be accessed without verifying the TLS
+                      certificate. For testing only.
+                    type: boolean
+                  keyData:
+                    description: KeyData contains PEM-encoded data from a client key
+                      file for TLS. The serialized form of data is a base64 encoded
+                      string
+                    format: byte
+                    type: string
+                  qps:
+                    description: QPS indicates the maximum QPS to the master from
+                      this client. Zero means no limit, it is different from qps defined
+                      in flowcontrol.RateLimiter
+                    format: int32
+                    type: integer
+                  qpsDivisor:
+                    description: QPSDivisor divites QPS to a new float32 qps value
+                      because we can not use float32 type in API Struct according
+                      to API convention. It allows you to set a more precise qps,
+                      like 0.01 (qps:1, qpsDivisor:100)
+                    format: int32
+                    type: integer
+                type: object
+              dispatchPolicies:
+                description: DispatchPolicies describes how to dispatch requests to
+                  upsteams. Only one dispatch policy will be matched The router will
+                  follow the order of DispatchPolicies, that means the previous policy
+                  has higher priority
+                items:
+                  properties:
+                    flowControlSchemaName:
+                      description: FlowControlSchemaName indicates to which flow control
+                        schema in spec.FlowControl will take effect on this prolicy
+                        If not set, there is no limit
+                      type: string
+                    logMode:
+                      description: dispatch policy level access log mode - if set
+                        to off, all access logs of requests matching this policy will
+                        be disabled. - if set to on, access logs will be enabled when
+                        spec.Logging.Mode is "on" or "" - if set to unset, the logging
+                        is controlled by spec.Logging.Mode
+                      type: string
+                    rules:
+                      description: Rules holds all the DispatchPolicyRules for this
+                        policy Gateway matches rules according to the list order,
+                        the previous rules take higher precedence
+                      items:
+                        description: DispatchPolicyRule holds information that describes
+                          a policy rule
+                        properties:
+                          apiGroups:
+                            description: APIGroups is the name of the APIGroup that
+                              contains the resources.  If multiple API groups are
+                              specified, any action requested against one of the enumerated
+                              resources in any API group will be allowed. - "*" represents
+                              all APIGroups. - An empty set mains that nothing is
+                              allowed. - use '-' prefix to invert apiGroups matching,
+                              e.g. "-apps" means match all apiGroups except "apps"
+                            items:
+                              type: string
+                            type: array
+                          nonResourceURLs:
+                            description: NonResourceURLs is a set of partial urls
+                              that a user should have access to.  *s are allowed,
+                              but only as the full, final step in the path Since non-resource
+                              URLs are not namespaced, this field is only applicable
+                              for ClusterRoles referenced from a ClusterRoleBinding.
+                              Rules can either apply to API resources (such as "pods"or
+                              "secrets") or non-resource URL paths (such as "/api"),  but
+                              not both. - "*" represents all NonResourceURLs. - An
+                              empty set mains that nothing is allowed. - NonResourceURLs
+                              can not use invert matching
+                            items:
+                              type: string
+                            type: array
+                          resourceNames:
+                            description: ResourceNames is an optional white list of
+                              names that the rule applies to. - "*" represents all
+                              ResourceNames. - An empty set means that everything
+                              is allowed. - use '-' prefix to invert resourceNames
+                              matching, e.g. "-nginx" means match all resourceNames
+                              except "nginx"
+                            items:
+                              type: string
+                            type: array
+                          resources:
+                            description: Resources is a list of resources this rule
+                              applies to. - "*" represents all Resources. - An empty
+                              set mains that nothing is allowed. - use "{resource}/{subresource}"
+                              to match one resource's subresource - use "*/{subresource}"
+                              to match all resources' subresource, but "{resource}/*"
+                              is not allowed. - use '-' prefix to invert resources
+                              matching, e.g. "-deployments" means match all resources
+                              except "deployments".
+                            items:
+                              type: string
+                            type: array
+                          serviceAccounts:
+                            description: ServiceAccounts is a list of serviceAccont
+                              users this rule applies to. It can be covered if Users
+                              matches all. - ServiceAccounts can not use invert matching
+                              - if Users is empty, an empty set mains that nothing
+                              is allowed, otherwise it means nothing is allowed. -
+                              serviceAccount name and namespace must be set
+                            items:
+                              properties:
+                                name:
+                                  type: string
+                                namespace:
+                                  type: string
+                              type: object
+                            type: array
+                          userGroups:
+                            description: UserGroups is a list of users groups this
+                              rule applies to. UserGroupAll represents all user groups.
+                              - "*" represents all UserGroups. - An empty set means
+                              that everything is allowed. - use '-' prefix to invert
+                              userGroups matching, e.g. "-system:controllers" means
+                              match all userGroups except "system:controllers"
+                            items:
+                              type: string
+                            type: array
+                          users:
+                            description: Users is a list of users this rule applies
+                              to. - "*" represents all Users. - if ServiceAccounts
+                              is empty, an empty set means that everything is allowed,
+                              otherwise it means nothing is allowed. use '-' prefix
+                              to invert users matching, e.g. "-admin" means match
+                              all users except "admin"
+                            items:
+                              type: string
+                            type: array
+                          verbs:
+                            description: Verbs is a list of Verbs that apply to ALL
+                              the ResourceKinds and AttributeRestrictions contained
+                              in this rule. - "*" represents all Verbs. - An empty
+                              set mains that nothing is allowed. - use '-' prefix
+                              to invert verbs matching, e.g. "-get" means match all
+                              verbs except "get"
+                            items:
+                              type: string
+                            type: array
+                        type: object
+                      type: array
+                    strategy:
+                      description: Specifies a load balancing method for a server
+                        group
+                      type: string
+                    upstreamSubset:
+                      description: UpstreamSubset indacates to the list of upstream
+                        endpoints. An empty set means use all upstreams
+                      items:
+                        type: string
+                      type: array
+                  type: object
+                type: array
+              flowControl:
+                description: Client flow control settings, e.g. qps and burst
+                properties:
+                  flowControlSchemas:
+                    items:
+                      properties:
+                        exempt:
+                          description: Exempt represents no limits on a flow.
+                          type: object
+                        globalMaxRequestsInflight:
+                          description: GlobalMaxRequestsInflight represents a maximum
+                            global concurrent number of requests in flight at a given
+                            time.
+                          properties:
+                            max:
+                              description: maximum concurrent number of requests
+                              format: int32
+                              type: integer
+                          type: object
+                        globalTokenBucket:
+                          description: GlobalTokenBucket represents a global token
+                            bucket approach. The rate limiter allows bursts of up
+                            to 'burst' to exceed the QPS, while still maintaining
+                            a smoothed qps rate of 'qps'.
+                          properties:
+                            burst:
+                              description: Maximum burst for throttle. This value
+                                must be bigger than QPS if QPS is not 0
+                              format: int32
+                              type: integer
+                            qps:
+                              description: QPS indicates the maximum QPS to the master
+                                from this client. It can not be zero
+                              format: int32
+                              type: integer
+                          type: object
+                        maxRequestsInflight:
+                          description: MaxRequestsInflight represents a maximum concurrent
+                            number of requests in flight at a given time.
+                          properties:
+                            max:
+                              description: maximum concurrent number of requests
+                              format: int32
+                              type: integer
+                          type: object
+                        name:
+                          description: Schema name
+                          type: string
+                        strategy:
+                          type: string
+                        tokenBucket:
+                          description: TokenBucket represents a token bucket approach.
+                            The rate limiter allows bursts of up to 'burst' to exceed
+                            the QPS, while still maintaining a smoothed qps rate of
+                            'qps'.
+                          properties:
+                            burst:
+                              description: Maximum burst for throttle. This value
+                                must be bigger than QPS if QPS is not 0
+                              format: int32
+                              type: integer
+                            qps:
+                              description: QPS indicates the maximum QPS to the master
+                                from this client. It can not be zero
+                              format: int32
+                              type: integer
+                          type: object
+                      type: object
+                    type: array
+                type: object
+              logging:
+                description: "Logging config for upstream cluster \n There are three
+                  places to control the log switch 1. flag --enable-proxy-access-log:
+                  If it is false, all proxy access log will be disabled. 2. log mode
+                  in upstream, it allows you control cluster level log switch. If
+                  it is off, all access logs of requests to this cluster will be disabled.
+                  3. log mode in dispatchPolicy, it allows you control policy level
+                  log switch. If it is off, all access logs of requests matching this
+                  policy will be disabled."
+                properties:
+                  mode:
+                    description: upstream cluster level log mode - if set to off,
+                      all access logs of requests to this cluster will be disabled.
+                      - if set to on, access logs of requests to this cluster will
+                      be enabled. But it can be override by dispatchPolicy.LogMode
+                      - if unset, the logging is controlled by dispatchPolicy.LogMode
+                    type: string
+                type: object
+              secureServing:
+                description: Secures serving config for upstream cluster
+                properties:
+                  certData:
+                    description: CertData contains PEM-encoded data from a client
+                      cert file for TLS. The serialized form of data is a base64 encoded
+                      string
+                    format: byte
+                    type: string
+                  clientCAData:
+                    description: ClientCAData contains PEM-encoded data from a ca
+                      file for TLS. The serialized form of data is a base64 encoded
+                      string
+                    format: byte
+                    type: string
+                  keyData:
+                    description: KeyData contains PEM-encoded data from a client key
+                      file for TLS. The serialized form of data is a base64 encoded
+                      string
+                    format: byte
+                    type: string
+                type: object
+              servers:
+                description: Servers contains a group of upstream api servers
+                items:
+                  properties:
+                    disabled:
+                      description: Disabled marks the server as permanently unavailable.
+                      type: boolean
+                    endpoint:
+                      description: Endpoint is the backend api server address, like
+                        https://apiserver.com:6443
+                      type: string
+                  type: object
+                type: array
+            type: object
+          status:
+            description: UpstreamClusterStatus defines the observed state of UpstreamCluster
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
