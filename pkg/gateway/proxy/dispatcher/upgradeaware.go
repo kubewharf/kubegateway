@@ -44,9 +44,11 @@ type UpgradeAwareHandler struct {
 
 // NewUpgradeAwareHandler creates a new proxy handler with a default flush interval. Responder is required for returning
 // errors to the caller.
-func NewUpgradeAwareHandler(location *url.URL, transport http.RoundTripper, wrapTransport, upgradeRequired bool, responder proxy.ErrorResponder, endpoint *clusters.EndpointInfo) *UpgradeAwareHandler {
+func NewUpgradeAwareHandler(location *url.URL, transport http.RoundTripper, upgradeTransport proxy.UpgradeRequestRoundTripper, wrapTransport, upgradeRequired bool, responder proxy.ErrorResponder, endpoint *clusters.EndpointInfo) *UpgradeAwareHandler {
+	handler := proxy.NewUpgradeAwareHandler(location, transport, wrapTransport, upgradeRequired, responder)
+	handler.UpgradeTransport = upgradeTransport
 	return &UpgradeAwareHandler{
-		UpgradeAwareHandler: proxy.NewUpgradeAwareHandler(location, transport, wrapTransport, upgradeRequired, responder),
+		UpgradeAwareHandler: handler,
 		endpoint:            endpoint,
 	}
 }
