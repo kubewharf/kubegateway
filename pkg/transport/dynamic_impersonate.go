@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/util/net"
+	"k8s.io/apimachinery/pkg/util/proxy"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/client-go/transport"
 	"k8s.io/klog"
@@ -31,6 +32,7 @@ type requestCanceler interface {
 }
 
 var _ net.RoundTripperWrapper = &dynamicImpersonatingRoundTripper{}
+var _ proxy.UpgradeRequestRoundTripper = &dynamicImpersonatingRoundTripper{}
 var _ requestCanceler = &dynamicImpersonatingRoundTripper{}
 
 type dynamicImpersonatingRoundTripper struct {
@@ -43,23 +45,22 @@ func NewDynamicImpersonatingRoundTripper(rt http.RoundTripper) http.RoundTripper
 	}
 }
 
-func (rt *dynamicImpersonatingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
-	klog.V(5).Infof("%s %s Host:%s", req.Method, req.URL.String(), req.Host)
-
+// WrapRequest implements k8s.io/apimachinery/pkg/util/proxy.UpgradeRequestRoundTripper interface.
+// It retrieve request user from context and add it to new request in headers.
+func (rt *dynamicImpersonatingRoundTripper) WrapRequest(req *http.Request) (*http.Request, error) {
 	if len(req.Header.Get(transport.ImpersonateUserHeader)) != 0 {
 		// impersonate header already be set
-		return rt.delegate.RoundTrip(req)
+		return req, nil
 	}
-
 	// no impersonate header
 	requestor, exists := request.UserFrom(req.Context())
 	if !exists {
 		// no user found in context, pass request to delegator
-		return rt.delegate.RoundTrip(req)
+		return req, nil
 	}
 
 	if klog.V(5) {
-		klog.Infof("Impersonator:")
+		klog.Infof("Add impersonator headers:")
 		klog.Infof("     Name: %s", requestor.GetName())
 		klog.Infof("    Group: %s", groupsToString(requestor.GetGroups()))
 		klog.Infof("    Extra: %s", extraToString(requestor.GetExtra()))
@@ -77,7 +78,16 @@ func (rt *dynamicImpersonatingRoundTripper) RoundTrip(req *http.Request) (*http.
 		}
 	}
 
-	return rt.delegate.RoundTrip(req)
+	return req, nil
+}
+
+func (rt *dynamicImpersonatingRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	klog.V(5).Infof("%s %s Host:%s", req.Method, req.URL.String(), req.Host)
+	newReq, err := rt.WrapRequest(req)
+	if err != nil {
+		return nil, err
+	}
+	return rt.delegate.RoundTrip(newReq)
 }
 
 func (rt *dynamicImpersonatingRoundTripper) CancelRequest(req *http.Request) {

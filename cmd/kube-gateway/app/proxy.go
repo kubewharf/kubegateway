@@ -59,7 +59,8 @@ func CreateProxyConfig(
 
 	// customize http error log to filter out some noisy log
 	// referred to k8s.io/component-base/logs/logs.go#InitLogs()
-	recommendedConfig.SecureServing.ErrorLog = log.New(proxyHTTPErrorLogWriter{}, "", 0)
+	controlplaneServerConfig.RecommendedConfig.SecureServing.ErrorLog = log.New(proxyHTTPErrorLogWriter{}, "", 0)
+	log.SetOutput(proxyHTTPErrorLogWriter{})
 
 	// create upstream controller
 	clusterController := controllers.NewUpstreamClusterController(controlplaneServerConfig.ExtraConfig.GatewaySharedInformerFactory.Proxy().V1alpha1().UpstreamClusters())
@@ -152,6 +153,6 @@ func (writer proxyHTTPErrorLogWriter) Write(data []byte) (n int, err error) {
 	if bytes.HasPrefix(data, []byte("http: TLS handshake error from")) {
 		return 0, nil
 	}
-	klog.InfoDepth(1, string(data))
+	klog.InfoDepth(4, string(data))
 	return len(data), nil
 }

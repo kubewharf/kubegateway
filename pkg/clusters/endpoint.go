@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"k8s.io/apimachinery/pkg/util/proxy"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/klog"
@@ -67,8 +68,8 @@ type EndpointInfo struct {
 	proxyUpgradeConfig *rest.Config
 	// http2 proxy round tripper
 	ProxyTransport http.RoundTripper
-	// http1 proxy round tripper for websockt
-	PorxyUpgradeTransport http.RoundTripper
+	// http1 proxy round tripper for websocket
+	PorxyUpgradeTransport proxy.UpgradeRequestRoundTripper
 
 	clientset kubernetes.Interface
 
