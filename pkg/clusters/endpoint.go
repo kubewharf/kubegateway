@@ -155,6 +155,8 @@ func startGatewayHealthCheck(e *EndpointInfo, interval time.Duration, ctx contex
 		tick := time.NewTicker(interval)
 		defer tick.Stop()
 
+		// trigger health check immediately
+		e.healthCheckCh <- struct{}{}
 		for {
 			select {
 			case <-tick.C:
