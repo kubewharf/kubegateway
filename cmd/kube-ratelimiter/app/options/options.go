@@ -15,14 +15,14 @@
 package options
 
 import (
-	limitconfig "github.com/kubewharf/kubegateway/pkg/ratelimiter/config"
-	"github.com/kubewharf/kubegateway/pkg/ratelimiter/limiter"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/informers"
+	"fmt"
 	"net"
 	"time"
 
+	"github.com/spf13/pflag"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiserveroptions "k8s.io/apiserver/pkg/server/options"
+	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -31,11 +31,19 @@ import (
 	componentbaseconfig "k8s.io/component-base/config"
 	"k8s.io/klog"
 
+	kubewharfoptions "github.com/kubewharf/apiserver-runtime/pkg/server/options"
+	"github.com/kubewharf/kubegateway/cmd/kube-gateway/app"
+	options2 "github.com/kubewharf/kubegateway/cmd/kube-gateway/app/options"
 	gatewayclientset "github.com/kubewharf/kubegateway/pkg/client/kubernetes"
+	controleplaneoptions "github.com/kubewharf/kubegateway/pkg/gateway/controlplane/options"
+	limitconfig "github.com/kubewharf/kubegateway/pkg/ratelimiter/config"
+	"github.com/kubewharf/kubegateway/pkg/ratelimiter/limiter"
 	"github.com/kubewharf/kubegateway/pkg/ratelimiter/options"
 )
 
 type Options struct {
+	ControlPlane *controleplaneoptions.ControlPlaneOptions
+
 	// ClientConnection specifies the kubeconfig file and client connection
 	// settings for the proxy server to use when communicating with the apiserver.
 	ClientConnection componentbaseconfig.ClientConnectionConfiguration
@@ -57,6 +65,15 @@ type Options struct {
 
 func NewOptions() *Options {
 	o := Options{
+		ControlPlane: func() *controleplaneoptions.ControlPlaneOptions {
+			opt := controleplaneoptions.NewControlPlaneOptions()
+			recommended := kubewharfoptions.NewRecommendedOptions().
+				WithEtcd("/registry/KubeGateway", nil).
+				WithServerRun().
+				WithProcessInfo(apiserveroptions.NewProcessInfo("kube-gateway", "kube-system"))
+			opt.RecommendedOptions = recommended
+			return opt
+		}(),
 		SecureServing: &apiserveroptions.SecureServingOptions{
 			BindAddress: net.ParseIP("0.0.0.0"),
 			BindPort:    0,
@@ -101,9 +118,15 @@ func NewOptions() *Options {
 }
 
 func (o *Options) Flags() cliflag.NamedFlagSets {
-	fss := cliflag.NamedFlagSets{}
 
-	o.SecureServing.AddFlags(fss.FlagSet("secure serving"))
+	fss := o.ControlPlane.Flags()
+
+	secureServing := fss.FlagSet("ratelimiter secure serving")
+	o.SecureServing.AddFlags(secureServing)
+	secureServing.VisitAll(func(f *pflag.Flag) {
+		f.Name = fmt.Sprintf("ratelimiter-%s", f.Name)
+	})
+
 	o.InsecureServing.AddUnqualifiedFlags(fss.FlagSet("insecure serving"))
 	o.Authentication.AddFlags(fss.FlagSet("authentication"))
 	o.Authorization.AddFlags(fss.FlagSet("authorization"))
@@ -123,8 +146,27 @@ func (o *Options) Flags() cliflag.NamedFlagSets {
 
 func (o *Options) Config() (*limitconfig.Config, error) {
 	c := &limitconfig.Config{Debugging: o.Debugging.DebuggingConfiguration}
+
+	// ControlPlane config
+	var loopbackClientConfig *restclient.Config
+	if o.LimitServer.EnableControlPlane {
+		if err := o.ControlPlane.RecommendedOptions.Complete(); err != nil {
+			return nil, err
+		}
+		controlPlaneServerRunOptions := options2.ControlPlaneServerRunOptions{
+			ControlPlaneOptions: o.ControlPlane,
+		}
+		controlPlaneConfig, err := app.CreateControlPlaneConfig(&controlPlaneServerRunOptions)
+		if err != nil {
+			return nil, err
+		}
+		c.ControlPlaneConfig = controlPlaneConfig.Complete()
+
+		loopbackClientConfig = controlPlaneConfig.RecommendedConfig.LoopbackClientConfig
+	}
+
 	// Prepare kube clients.
-	gatewayClient, client, err := createClients(o.ClientConnection, o.Master, o.LimitServer.RenewDeadline.Duration)
+	gatewayClient, client, err := createClients(loopbackClientConfig, o.ClientConnection, o.Master, o.LimitServer.RenewDeadline.Duration)
 	if err != nil {
 		return nil, err
 	}
@@ -175,26 +217,29 @@ func (o *Options) Validate() []error {
 }
 
 // createClients creates a kube client and an event client from the given limitconfig and masterOverride.
-func createClients(config componentbaseconfig.ClientConnectionConfiguration, masterOverride string, timeout time.Duration) (gatewayclientset.Interface, clientset.Interface, error) {
+func createClients(loopbackClientConfig *restclient.Config, config componentbaseconfig.ClientConnectionConfiguration, masterOverride string, timeout time.Duration) (gatewayclientset.Interface, clientset.Interface, error) {
 	if len(config.Kubeconfig) == 0 && len(masterOverride) == 0 {
 		klog.Warningf("Neither --kubeconfig nor --master was specified. Using default API gatewayClient. This might not work.")
 	}
 
-	// This creates a gatewayClient, first loading any specified kubeconfig
-	// file, and then overriding the Master flag, if non-empty.
-	kubeConfig, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-		&clientcmd.ClientConfigLoadingRules{ExplicitPath: config.Kubeconfig},
-		&clientcmd.ConfigOverrides{ClusterInfo: clientcmdapi.Cluster{Server: masterOverride}}).ClientConfig()
-	if err != nil {
-		return nil, nil, err
+	kubeConfig := loopbackClientConfig
+	if kubeConfig == nil {
+		// This creates a gatewayClient, first loading any specified kubeconfig
+		// file, and then overriding the Master flag, if non-empty.
+		var err error
+		kubeConfig, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+			&clientcmd.ClientConfigLoadingRules{ExplicitPath: config.Kubeconfig},
+			&clientcmd.ConfigOverrides{ClusterInfo: clientcmdapi.Cluster{Server: masterOverride}}).ClientConfig()
+		if err != nil {
+			return nil, nil, err
+		}
+
+		kubeConfig.DisableCompression = true
+		kubeConfig.AcceptContentTypes = config.AcceptContentTypes
+		kubeConfig.ContentType = config.ContentType
+		kubeConfig.QPS = config.QPS
+		kubeConfig.Burst = int(config.Burst)
 	}
-
-	kubeConfig.DisableCompression = true
-	kubeConfig.AcceptContentTypes = config.AcceptContentTypes
-	kubeConfig.ContentType = config.ContentType
-	kubeConfig.QPS = config.QPS
-	kubeConfig.Burst = int(config.Burst)
-
 	gatewayClient, err := gatewayclientset.NewForConfig(restclient.AddUserAgent(kubeConfig, "kube-gateway-rate-limiter"))
 	if err != nil {
 		return nil, nil, err

@@ -10,15 +10,19 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	componentbaseconfig "k8s.io/component-base/config"
+	"k8s.io/klog"
 
 	"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	gatewayclientset "github.com/kubewharf/kubegateway/pkg/client/kubernetes"
+	controlplane "github.com/kubewharf/kubegateway/pkg/gateway/controlplane"
 	"github.com/kubewharf/kubegateway/pkg/ratelimiter"
 	"github.com/kubewharf/kubegateway/pkg/ratelimiter/limiter"
 )
 
 // Config has all the context to run a rate limiter
 type Config struct {
+	ControlPlaneConfig *controlplane.CompletedConfig
+
 	SecureServing   *apiserver.SecureServingInfo
 	InsecureServing *apiserver.DeprecatedInsecureServingInfo
 	Authentication  apiserver.AuthenticationInfo
@@ -41,7 +45,7 @@ func (c *Config) Complete() CompletedConfig {
 	return CompletedConfig{c}
 }
 
-func (c *CompletedConfig) New(name string) (*ratelimiter.Server, error) {
+func (c *CompletedConfig) New(name string) (ratelimiter.PreparedServer, error) {
 	rateLimiter := &ratelimiter.Server{
 		Name:            name,
 		SecureServing:   c.Config.SecureServing,
@@ -68,8 +72,21 @@ func (c *CompletedConfig) New(name string) (*ratelimiter.Server, error) {
 		insecureSuperuserAuthn := apiserver.AuthenticationInfo{Authenticator: &apiserver.InsecureSuperuser{}}
 		rateLimiter.InsecureHandler = endpoints.BuildHandlerChain(unsecuredMux, c.RateLimiter, nil, &insecureSuperuserAuthn, requestInfoResolver)
 	}
+	if c.ControlPlaneConfig != nil {
+		controlPlaneServer, err := c.ControlPlaneConfig.New(apiserver.NewEmptyDelegate())
+		if err != nil {
+			return nil, err
+		}
+		controlPlaneServer.GenericAPIServer.AddPostStartHookOrDie(name, func(context apiserver.PostStartHookContext) error {
+			err := rateLimiter.Run(context.StopCh)
+			klog.Infof("Ratelimiter server existed: %v", err)
+			return err
+		})
 
-	return rateLimiter, nil
+		return controlPlaneServer.PrepareRun(), nil
+	}
+
+	return rateLimiter.PrepareRun(), nil
 }
 
 func defaultAPIResourceConfigSource() *serverstorage.ResourceConfig {

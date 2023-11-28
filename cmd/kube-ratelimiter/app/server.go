@@ -94,11 +94,9 @@ func Run(completeConfig config.CompletedConfig, stopCh <-chan struct{}) error {
 	// To help debugging, immediately log version
 	klog.Infof("Version: %+v", version.Get())
 
-	rateLimiter, err := completeConfig.New("rate-limiter")
+	server, err := completeConfig.New("rate-limiter")
 	if err != nil {
 		return err
 	}
-
-	prepared := rateLimiter.PrepareRun()
-	return prepared.Run(stopCh)
+	return server.Run(stopCh)
 }

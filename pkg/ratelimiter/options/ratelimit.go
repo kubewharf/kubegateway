@@ -12,6 +12,8 @@ type RateLimitOptions struct {
 	Identity           string
 	K8sStoreSyncPeriod time.Duration
 	componentbaseconfig.LeaderElectionConfiguration
+
+	EnableControlPlane bool
 }
 
 func (c *RateLimitOptions) AddFlags(fs *pflag.FlagSet) {
@@ -25,4 +27,6 @@ func (c *RateLimitOptions) AddFlags(fs *pflag.FlagSet) {
 
 	fs.StringVar(&c.LimitStore, "limit-store", c.LimitStore, "rate limiter store type")
 	fs.DurationVar(&c.K8sStoreSyncPeriod, "k8s-store-sync-period", c.K8sStoreSyncPeriod, "sync period for k8s object store")
+
+	fs.BoolVar(&c.EnableControlPlane, "enable-controlplane", c.EnableControlPlane, "start control plane server")
 }
