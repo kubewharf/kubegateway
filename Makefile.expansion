@@ -24,8 +24,33 @@ codegen: kube-codegen
 		--client-path=pkg/client \
 		--apis-path=pkg/apis \
 		--go-header-file=boilerplate.go.txt \
-		--generators="+openapi,+client,+lister,+informer,+protobuf"
-	
+		--generators="+openapi,+client,+lister,+informer,+protobuf,+deepcopy"
+
 .PHONY: verify-license
 verify-license:
 	@addlicense -c "ByteDance and its affiliates" -y $(shell date +"%Y") -ignore **/*.yaml -check ** 
+
+# find or download controller-gen
+# download controller-gen if necessary
+controller-gen:
+ifeq (, $(shell which controller-gen))
+	@{ \
+	set -e ;\
+	CONTROLLER_GEN_TMP_DIR=$$(mktemp -d) ;\
+	cd $$CONTROLLER_GEN_TMP_DIR ;\
+	go mod init tmp ;\
+	go get sigs.k8s.io/controller-tools/cmd/controller-gen@v0.2.5 ;\
+	rm -rf $$CONTROLLER_GEN_TMP_DIR ;\
+	}
+CONTROLLER_GEN=$(GOBIN)/controller-gen
+else
+CONTROLLER_GEN=$(shell which controller-gen)
+endif
+
+# Generate CRD
+generate-crd: controller-gen
+	$(CONTROLLER_GEN) crd:crdVersions=v1 paths="./pkg/apis/..." output:crd:dir=./hack/crd
+
+# Generate code
+generate: generate-crd codegen
+

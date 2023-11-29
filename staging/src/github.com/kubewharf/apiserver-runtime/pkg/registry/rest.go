@@ -85,7 +85,7 @@ func NewResourceREST(scheme *runtime.Scheme, restOptionsGetter generic.RESTOptio
 	}
 
 	subresources := []string{}
-	if hasStatus {
+	if o.SubStatus && hasStatus {
 		statusStore := *store
 		statusStore.UpdateStrategy = DefaultStatusRESTStrategy{o.RESTStrategy}
 		storage.SubresourcesREST["status"] = &StatusREST{Store: &statusStore}

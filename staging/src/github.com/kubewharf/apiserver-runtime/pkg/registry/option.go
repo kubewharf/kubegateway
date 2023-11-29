@@ -36,6 +36,7 @@ type RESTStorageOptions struct {
 	// HubGroupVersion indicates what version objects read from etcd or incoming requests should be converted to for in-memory handling.
 	HubGroupVersion             schema.GroupVersion
 	SubresourceRESTStoreCreater func(store *genericregistry.Store) map[string]rest.Storage
+	SubStatus                   bool
 }
 
 func (o RESTStorageOptions) Validate() (errList field.ErrorList) {

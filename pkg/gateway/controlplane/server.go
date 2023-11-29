@@ -15,23 +15,23 @@
 package server
 
 import (
-	"github.com/kubewharf/apiserver-runtime/pkg/server"
-	apiserver "github.com/kubewharf/apiserver-runtime/pkg/server"
-	corerestplugin "github.com/kubewharf/apiserver-runtime/plugin/registry/core/rest"
+	coordinationv1 "k8s.io/api/coordination/v1"
 	corev1 "k8s.io/api/core/v1"
 	rbacv1 "k8s.io/api/rbac/v1"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	serverstorage "k8s.io/apiserver/pkg/server/storage"
 	"k8s.io/kubernetes/pkg/master"
+	coordinationrest "k8s.io/kubernetes/pkg/registry/coordination/rest"
+	rbacrest "k8s.io/kubernetes/pkg/registry/rbac/rest"
+
+	"github.com/kubewharf/apiserver-runtime/pkg/server"
+	apiserver "github.com/kubewharf/apiserver-runtime/pkg/server"
+	corerestplugin "github.com/kubewharf/apiserver-runtime/plugin/registry/core/rest"
 
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	gatewayinformers "github.com/kubewharf/kubegateway/pkg/client/informers"
 	gatewayclientset "github.com/kubewharf/kubegateway/pkg/client/kubernetes"
 	"github.com/kubewharf/kubegateway/pkg/gateway/controlplane/bootstrap"
-
-	// RESTStorage installers
-	rbacrest "k8s.io/kubernetes/pkg/registry/rbac/rest"
-
 	proxyrest "github.com/kubewharf/kubegateway/pkg/gateway/controlplane/registry/proxy/rest"
 )
 
@@ -96,6 +96,7 @@ func (c *CompletedConfig) New(delegationTarget genericapiserver.DelegationTarget
 	restStorageProviders := []master.RESTStorageProvider{
 		// Install Other group APIs
 		rbacrest.RESTStorageProvider{Authorizer: c.GenericConfig.Authorization.Authorizer},
+		coordinationrest.RESTStorageProvider{},
 		// Install Gateway APIs
 		proxyrest.NewRESTStorageProviderOrDie(c.GenericConfig.Scheme, c.GenericConfig.RESTStorageOptionsFactory),
 	}
@@ -121,6 +122,7 @@ func DefaultAPIResourceConfigSource() *serverstorage.ResourceConfig {
 		// enable some native apis
 		corev1.SchemeGroupVersion,
 		rbacv1.SchemeGroupVersion,
+		coordinationv1.SchemeGroupVersion,
 		// add gateway apis here
 		proxyv1alpha1.SchemeGroupVersion,
 	)
