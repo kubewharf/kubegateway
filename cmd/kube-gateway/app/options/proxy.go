@@ -27,6 +27,7 @@ type ProxyOptions struct {
 	SecureServing  *proxyoptions.SecureServingOptions
 	ProcessInfo    *genericoptions.ProcessInfo
 	Logging        *proxyoptions.LoggingOptions
+	RateLimiter    *proxyoptions.RateLimiterOptions
 }
 
 func NewProxyOptions() *ProxyOptions {
@@ -36,6 +37,7 @@ func NewProxyOptions() *ProxyOptions {
 		SecureServing:  proxyoptions.NewSecureServingOptions(),
 		ProcessInfo:    genericoptions.NewProcessInfo("kube-gateway-proxy", "kube-system"),
 		Logging:        proxyoptions.NewLoggingOptions(),
+		RateLimiter:    proxyoptions.NewRateLimiterOptions(),
 	}
 }
 
@@ -46,5 +48,6 @@ func (s *ProxyOptions) Flags() (fss cliflag.NamedFlagSets) {
 	s.Authorization.AddFlags(fs)
 	s.SecureServing.AddFlags(fs)
 	s.Logging.AddFlags(fs)
+	s.RateLimiter.AddFlags(fs)
 	return
 }
