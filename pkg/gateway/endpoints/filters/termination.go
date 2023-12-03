@@ -82,6 +82,6 @@ func (rw *terminationMetricsWriter) recordMetrics(req *http.Request) {
 			// use status text when reason is empty
 			reason = stringy.New(http.StatusText(rw.status)).SnakeCase().ToLower()
 		}
-		metrics.RecordProxyRequestTermination(req, rw.status, reason)
+		metrics.RecordProxyRequestTermination(req, rw.status, reason, proxyInfo.FlowControl)
 	}
 }

@@ -43,11 +43,12 @@ type responseWriterDelegator struct {
 	startTime          time.Time
 	captureErrorOutput bool
 
-	logging      bool
-	host         string
-	endpoint     string
-	user         user.Info
-	impersonator user.Info
+	logging         bool
+	host            string
+	endpoint        string
+	flowControlName string
+	user            user.Info
+	impersonator    user.Info
 
 	req         *http.Request
 	requestInfo *request.RequestInfo
@@ -63,17 +64,19 @@ func decorateResponseWriter(
 	requestInfo *request.RequestInfo,
 	host, endpoint string,
 	user, impersonator user.Info,
+	flowControlName string,
 ) *responseWriterDelegator {
 	return &responseWriterDelegator{
-		startTime:    time.Now(),
-		req:          req,
-		w:            w,
-		logging:      logging,
-		requestInfo:  requestInfo,
-		host:         host,
-		endpoint:     endpoint,
-		user:         user,
-		impersonator: impersonator,
+		startTime:       time.Now(),
+		req:             req,
+		w:               w,
+		logging:         logging,
+		requestInfo:     requestInfo,
+		host:            host,
+		endpoint:        endpoint,
+		flowControlName: flowControlName,
+		user:            user,
+		impersonator:    impersonator,
 	}
 }
 
@@ -143,6 +146,7 @@ func (rw *responseWriterDelegator) MonitorAfterProxy() {
 		rw.req,
 		rw.host,
 		rw.endpoint,
+		rw.flowControlName,
 		rw.requestInfo,
 		rw.Header().Get("Content-Type"),
 		rw.Status(),

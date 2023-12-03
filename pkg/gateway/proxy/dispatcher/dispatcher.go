@@ -102,6 +102,8 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	_ = request.SetFlowControl(req.Context(), endpointPicker.FlowControlName())
+
 	flowcontrol := endpointPicker.FlowControl()
 	if !flowcontrol.TryAcquire() {
 		//TODO: exempt master request and long running request
@@ -153,7 +155,7 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}()
 
 	logging := d.enableAccessLog && endpointPicker.EnableLog()
-	delegate := decorateResponseWriter(req, w, logging, requestInfo, extraInfo.Hostname, endpoint.Endpoint, user, extraInfo.Impersonator)
+	delegate := decorateResponseWriter(req, w, logging, requestInfo, extraInfo.Hostname, endpoint.Endpoint, user, extraInfo.Impersonator, endpointPicker.FlowControlName())
 	delegate.MonitorBeforeProxy()
 	defer delegate.MonitorAfterProxy()
 

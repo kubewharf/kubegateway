@@ -51,6 +51,7 @@ var (
 // EndpointPicker knows
 type EndpointPicker interface {
 	FlowControl() gatewayflowcontrol.FlowControl
+	FlowControlName() string
 	Pop() (*EndpointInfo, error)
 	EnableLog() bool
 }
@@ -60,6 +61,7 @@ type endpointPickStrategy struct {
 	cluster     *ClusterInfo
 	strategy    proxyv1alpha1.Strategy
 	flowControl gatewayflowcontrol.FlowControl
+	flowControlName string
 	upstreams   []string
 	enableLog   bool
 }
@@ -103,6 +105,10 @@ func (s *endpointPickStrategy) EnableLog() bool {
 
 func (s *endpointPickStrategy) FlowControl() gatewayflowcontrol.FlowControl {
 	return s.flowControl
+}
+
+func (s *endpointPickStrategy) FlowControlName() string {
+	return s.flowControlName
 }
 
 // ClusterInfo is a wrapper to a UpstreamCluster with additional information
@@ -499,6 +505,7 @@ func (c *ClusterInfo) MatchAttributes(requestAttributes authorizer.Attributes) (
 		cluster:     c,
 		strategy:    policy.Strategy,
 		flowControl: c.getFlowSchema(policy.FlowControlSchemaName),
+		flowControlName: policy.FlowControlSchemaName,
 		enableLog:   isLogEnabled(logging.Mode, policy.LogMode),
 	}
 

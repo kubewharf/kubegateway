@@ -21,9 +21,10 @@ import (
 
 // ProxyInfo contains information that indicates if the request is proxied
 type ProxyInfo struct {
-	Forwarded bool
-	Endpoint  string
-	Reason    string
+	Forwarded   bool
+	Endpoint    string
+	Reason      string
+	FlowControl string
 }
 
 func NewProxyInfo() *ProxyInfo {
@@ -43,13 +44,12 @@ func ExtraProxyInfoFrom(ctx context.Context) (*ProxyInfo, bool) {
 	return info, ok
 }
 
-func SetProxyForwarded(ctx context.Context, endpoint string) error {
+func SetFlowControl(ctx context.Context, flowControl string) error {
 	info, ok := ExtraProxyInfoFrom(ctx)
 	if !ok {
 		return fmt.Errorf("no proxy info found in context")
 	}
-	info.Forwarded = true
-	info.Endpoint = endpoint
+	info.FlowControl = flowControl
 	return nil
 }
 
@@ -60,6 +60,16 @@ func SetProxyTerminated(ctx context.Context, reason string) error {
 	}
 	info.Forwarded = false
 	info.Reason = reason
+	return nil
+}
+
+func SetProxyForwarded(ctx context.Context, endpoint string) error {
+	info, ok := ExtraProxyInfoFrom(ctx)
+	if !ok {
+		return fmt.Errorf("no proxy info found in context")
+	}
+	info.Forwarded = true
+	info.Endpoint = endpoint
 	return nil
 }
 
