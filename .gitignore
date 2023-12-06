@@ -24,6 +24,7 @@ default.etcd/
 __debug_bin
 kubeconfig
 *.log
+.history
 
 # ide
 .idea/
