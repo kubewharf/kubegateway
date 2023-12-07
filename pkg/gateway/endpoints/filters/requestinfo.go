@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 
+	genericapifilters "k8s.io/apiserver/pkg/endpoints/filters"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 
@@ -55,3 +56,5 @@ func WithImpersonator(handler http.Handler) http.Handler {
 		handler.ServeHTTP(w, req)
 	})
 }
+
+var WithRequestInfo = genericapifilters.WithRequestInfo
