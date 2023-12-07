@@ -20,6 +20,7 @@ set -o pipefail
 
 readonly BASE_SOURCE_ROOT="$(cd "$(dirname "${BASH_SOURCE}")/.." && pwd -P)"
 source "${BASE_SOURCE_ROOT}"/hack/lib/pki.sh
+source "${BASE_SOURCE_ROOT}"/hack/lib/utils.sh
 
 readonly TEST_DATA_PATH="${BASE_SOURCE_ROOT}"/hack/testdata
 readonly TEMP_DIR="${BASE_SOURCE_ROOT}"/output/pki
@@ -215,33 +216,47 @@ kind load docker-image --name="${kind_cluster_name}" kube-gateway:local-up
 
 kubectl --context "${context_name}" apply -f "${TEST_DATA_PATH}"/local-up.yaml
 
-sed -e "s/<client-ca>/$(base64 -w 0 ${UPSTREAM_CONF_DIR}/ca.crt)/g" \
-    -e "s/<client-key>/$(base64 -w 0 ${GATEWAY_CONF_DIR}/kubegateway-upstream-client-key.pem)/g" \
-    -e "s/<client-cert>/$(base64 -w 0 ${GATEWAY_CONF_DIR}/kubegateway-upstream-client.pem)/g" \
-    -e "s/<serving-client-ca>/$(base64 -w 0 ${UPSTREAM_CONF_DIR}/ca.crt)/g" \
-    -e "s/<serving-key>/$(base64 -w 0 ${UPSTREAM_CONF_DIR}/apiserver.key)/g" \
-    -e "s/<serving-cert>/$(base64 -w 0 ${UPSTREAM_CONF_DIR}/apiserver.crt)/g" \
-    "${TEST_DATA_PATH}"/localhost.yaml.tmpl >"${GATEWAY_CONF_DIR}"/localhost.yaml
+os=$(kube::util::host_os)
+
+if [[ ${os} == "darwin" ]]; then
+    sed -e "s/<client-ca>/$(base64 -i ${UPSTREAM_CONF_DIR}/ca.crt)/g" \
+        -e "s/<client-key>/$(base64 -i ${GATEWAY_CONF_DIR}/kubegateway-upstream-client-key.pem)/g" \
+        -e "s/<client-cert>/$(base64 -i ${GATEWAY_CONF_DIR}/kubegateway-upstream-client.pem)/g" \
+        -e "s/<serving-client-ca>/$(base64 -i ${UPSTREAM_CONF_DIR}/ca.crt)/g" \
+        -e "s/<serving-key>/$(base64 -i ${UPSTREAM_CONF_DIR}/apiserver.key)/g" \
+        -e "s/<serving-cert>/$(base64 -i ${UPSTREAM_CONF_DIR}/apiserver.crt)/g" \
+        "${TEST_DATA_PATH}"/localhost.yaml.tmpl >"${GATEWAY_CONF_DIR}"/localhost.yaml
+elif [[ ${os} == "linux" ]]; then
+    sed -e "s/<client-ca>/$(base64 -w 0 ${UPSTREAM_CONF_DIR}/ca.crt)/g" \
+        -e "s/<client-key>/$(base64 -w 0 ${GATEWAY_CONF_DIR}/kubegateway-upstream-client-key.pem)/g" \
+        -e "s/<client-cert>/$(base64 -w 0 ${GATEWAY_CONF_DIR}/kubegateway-upstream-client.pem)/g" \
+        -e "s/<serving-client-ca>/$(base64 -w 0 ${UPSTREAM_CONF_DIR}/ca.crt)/g" \
+        -e "s/<serving-key>/$(base64 -w 0 ${UPSTREAM_CONF_DIR}/apiserver.key)/g" \
+        -e "s/<serving-cert>/$(base64 -w 0 ${UPSTREAM_CONF_DIR}/apiserver.crt)/g" \
+        "${TEST_DATA_PATH}"/localhost.yaml.tmpl >"${GATEWAY_CONF_DIR}"/localhost.yaml
+else
+      kube::log::info "${os} is NOT supported."
+fi
 
 while ! kubectl --context "${context_name}" get pod kubegateway-0 | grep "Running" >/dev/null; do
     echo ">> waiting for kubegateway server running, sleep 5s"
-    sleep 5s
+    sleep 5
 done
 
 {
-    sleep 5s
+    sleep 5
     kubectl --context gateway-control-plane apply -f "${GATEWAY_CONF_DIR}"/localhost.yaml
     echo "
 Congratulations !!
 
 You can now use gateway-control-plane context to connect gateway control plane:
-    
+
     kubectl --context gateway-control-plane api-resources
 
 You can now use gateway-proxy context to connect upstream cluster:
 
     kubectl --context gateway-proxy api-resources
-    
+
 Have a nice day! 👋
 "
 } &
