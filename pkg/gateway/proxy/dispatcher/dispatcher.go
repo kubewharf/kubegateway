@@ -26,7 +26,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
-	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/apiserver/pkg/endpoints/filters"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
@@ -185,7 +184,7 @@ func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWrite
 		klog.Errorf("[proxy termination] method=%q host=%q uri=%q url.host=%v resp=%v reason=%q message=[%v]", req.Method, net.HostWithoutPort(req.Host), req.RequestURI, urlHost, code, reason, err.Error())
 	}
 
-	runtime.Must(request.SetProxyTerminated(req.Context(), reason))
+	request.SetProxyTerminated(req.Context(), reason)
 
 	responsewriters.ErrorNegotiated(err, d.codecs, gv, w, req)
 }

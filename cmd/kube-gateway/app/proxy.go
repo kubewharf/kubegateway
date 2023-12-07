@@ -53,6 +53,9 @@ func CreateProxyConfig(
 	// openapi
 	recommendedConfig.WithOpenapiConfig("KubeGatewayProxy", GetNativeOpenAPIDefinitions)
 
+	// disable default metric, metrics api will be installed when new proxy server
+	recommendedConfig.EnableMetrics = false
+
 	if lastErr = o.SecureServing.ApplyTo(&recommendedConfig.SecureServing, *controlplaneOptions.SecureServing); lastErr != nil {
 		return
 	}
