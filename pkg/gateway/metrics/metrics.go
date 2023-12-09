@@ -259,3 +259,14 @@ func cleanResource(requestInfo *request.RequestInfo) string {
 func codeToString(s int) string {
 	return strconv.Itoa(s)
 }
+
+// RecordRateLimiterRequest records ratelimiter requests
+func RecordRateLimiterRequest(serverName string, method string, result string, flowControl string, elapsed time.Duration) {
+	ProxyRateLimiterRequestCounterObservers.Observe(MetricInfo{
+		ServerName:  serverName,
+		Method:      method,
+		Result:      result,
+		FlowControl: flowControl,
+		Latency:     elapsed.Seconds(),
+	})
+}

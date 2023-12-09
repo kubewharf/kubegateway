@@ -111,6 +111,17 @@ var (
 		[]string{"pid", "serverName", "endpoint", "resource"},
 	)
 
+	proxyRateLimiterRequestCounter = compbasemetrics.NewCounterVec(
+		&compbasemetrics.CounterOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "ratelimter_request_total",
+			Help:           "Counter of ratelimter request, it is recorded when request ends",
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"pid", "serverName", "method", "result", "flowcontrol"},
+	)
+
 	localMetrics = []compbasemetrics.Registerable{
 		proxyReceiveRequestCounter,
 		proxyRequestCounter,
@@ -119,6 +130,7 @@ var (
 		proxyUpstreamUnhealthy,
 		proxyRequestTerminationsTotal,
 		proxyRegisteredWatchers,
+		proxyRateLimiterRequestCounter,
 	}
 )
 
@@ -143,7 +155,7 @@ func Register() {
 		ProxyRequestTerminationsObservers.AddObserver(&proxyRequestTerminationsObserver{})
 		ProxyWatcherRegisteredObservers.AddObserver(&proxyWatcherRegisteredObserver{})
 		ProxyWatcherUnregisteredObservers.AddObserver(&proxyWatcherUnregisteredObserver{})
-
+		ProxyRateLimiterRequestCounterObservers.AddObserver(&proxyRateLimiterRequestCounterObserver{})
 	})
 }
 
@@ -193,4 +205,10 @@ type proxyWatcherUnregisteredObserver struct{}
 
 func (o *proxyWatcherUnregisteredObserver) Observe(metric MetricInfo) {
 	proxyRegisteredWatchers.WithLabelValues(proxyPid, metric.ServerName, metric.Endpoint, metric.Resource).Dec()
+}
+
+type proxyRateLimiterRequestCounterObserver struct{}
+
+func (o *proxyRateLimiterRequestCounterObserver) Observe(metric MetricInfo) {
+	proxyRateLimiterRequestCounter.WithLabelValues(proxyPid, metric.ServerName, metric.Method, metric.Result, metric.FlowControl).Inc()
 }

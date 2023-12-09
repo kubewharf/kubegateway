@@ -23,7 +23,7 @@ import (
 func createTestNotReadyClusterInfo() *ClusterInfo {
 	cfg := newTestUpstreamClusterConfig()
 	cfg.Name = "testing.notReadyCluster"
-	ret, _ := CreateClusterInfo(cfg, nil)
+	ret, _ := CreateClusterInfo(cfg, nil, "", nil)
 	return ret
 }
 

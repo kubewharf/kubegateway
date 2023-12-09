@@ -66,7 +66,10 @@ func CreateProxyConfig(
 	log.SetOutput(proxyHTTPErrorLogWriter{})
 
 	// create upstream controller
-	clusterController := controllers.NewUpstreamClusterController(controlplaneServerConfig.ExtraConfig.GatewaySharedInformerFactory.Proxy().V1alpha1().UpstreamClusters())
+	clusterController := controllers.NewUpstreamClusterController(
+		controlplaneServerConfig.ExtraConfig.GatewaySharedInformerFactory.Proxy().V1alpha1().UpstreamClusters(),
+		o.RateLimiter,
+	)
 	// Dynamic SNI for upstream cluster
 	recommendedConfig.Config.SecureServing.DynamicClientConfig = clusterController
 	// Proxy handler
