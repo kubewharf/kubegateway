@@ -131,3 +131,13 @@ func (c *FakeRateLimitConditions) Patch(ctx context.Context, name string, pt typ
 	}
 	return obj.(*v1alpha1.RateLimitCondition), err
 }
+
+// Acquire takes the representation of a rateLimitAcquire and creates it.  Returns the server's representation of the rateLimitAcquire, and an error, if there is any.
+func (c *FakeRateLimitConditions) Acquire(ctx context.Context, rateLimitConditionName string, rateLimitAcquire *v1alpha1.RateLimitAcquire, opts v1.CreateOptions) (result *v1alpha1.RateLimitAcquire, err error) {
+	obj, err := c.Fake.
+		Invokes(testing.NewRootCreateSubresourceAction(ratelimitconditionsResource, rateLimitConditionName, "acquire", rateLimitAcquire), &v1alpha1.RateLimitAcquire{})
+	if obj == nil {
+		return nil, err
+	}
+	return obj.(*v1alpha1.RateLimitAcquire), err
+}

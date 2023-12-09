@@ -41,11 +41,14 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.FlowControl":                          schema_pkg_apis_proxy_v1alpha1_FlowControl(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.FlowControlSchema":                    schema_pkg_apis_proxy_v1alpha1_FlowControlSchema(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.FlowControlSchemaConfiguration":       schema_pkg_apis_proxy_v1alpha1_FlowControlSchemaConfiguration(ref),
-		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.LimitAcceptResult":                    schema_pkg_apis_proxy_v1alpha1_LimitAcceptResult(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.LimitItemDetail":                      schema_pkg_apis_proxy_v1alpha1_LimitItemDetail(ref),
-		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.LimitRequest":                         schema_pkg_apis_proxy_v1alpha1_LimitRequest(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.LoggingConfig":                        schema_pkg_apis_proxy_v1alpha1_LoggingConfig(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.MaxRequestsInflightFlowControlSchema": schema_pkg_apis_proxy_v1alpha1_MaxRequestsInflightFlowControlSchema(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquire":                     schema_pkg_apis_proxy_v1alpha1_RateLimitAcquire(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireRequest":              schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireRequest(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireResult":               schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireResult(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireSpec":                 schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireSpec(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireStatus":               schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireStatus(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitCondition":                   schema_pkg_apis_proxy_v1alpha1_RateLimitCondition(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitConditionList":               schema_pkg_apis_proxy_v1alpha1_RateLimitConditionList(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitItemConfiguration":           schema_pkg_apis_proxy_v1alpha1_RateLimitItemConfiguration(ref),
@@ -53,8 +56,6 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitServerInfo":                  schema_pkg_apis_proxy_v1alpha1_RateLimitServerInfo(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitSpec":                        schema_pkg_apis_proxy_v1alpha1_RateLimitSpec(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitStatus":                      schema_pkg_apis_proxy_v1alpha1_RateLimitStatus(ref),
-		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.ReteLimitRequest":                     schema_pkg_apis_proxy_v1alpha1_ReteLimitRequest(ref),
-		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.ReteLimitResult":                      schema_pkg_apis_proxy_v1alpha1_ReteLimitResult(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.SecretReferecence":                    schema_pkg_apis_proxy_v1alpha1_SecretReferecence(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.SecureServing":                        schema_pkg_apis_proxy_v1alpha1_SecureServing(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.ServiceAccountRef":                    schema_pkg_apis_proxy_v1alpha1_ServiceAccountRef(ref),
@@ -549,43 +550,6 @@ func schema_pkg_apis_proxy_v1alpha1_FlowControlSchemaConfiguration(ref common.Re
 	}
 }
 
-func schema_pkg_apis_proxy_v1alpha1_LimitAcceptResult(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Type: []string{"object"},
-				Properties: map[string]spec.Schema{
-					"flowControl": {
-						SchemaProps: spec.SchemaProps{
-							Type:   []string{"string"},
-							Format: "",
-						},
-					},
-					"accept": {
-						SchemaProps: spec.SchemaProps{
-							Type:   []string{"boolean"},
-							Format: "",
-						},
-					},
-					"limit": {
-						SchemaProps: spec.SchemaProps{
-							Type:   []string{"integer"},
-							Format: "int32",
-						},
-					},
-					"error": {
-						SchemaProps: spec.SchemaProps{
-							Type:   []string{"string"},
-							Format: "",
-						},
-					},
-				},
-				Required: []string{"accept", "limit"},
-			},
-		},
-	}
-}
-
 func schema_pkg_apis_proxy_v1alpha1_LimitItemDetail(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -610,31 +574,6 @@ func schema_pkg_apis_proxy_v1alpha1_LimitItemDetail(ref common.ReferenceCallback
 		},
 		Dependencies: []string{
 			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.MaxRequestsInflightFlowControlSchema", "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.TokenBucketFlowControlSchema"},
-	}
-}
-
-func schema_pkg_apis_proxy_v1alpha1_LimitRequest(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Type: []string{"object"},
-				Properties: map[string]spec.Schema{
-					"flowControl": {
-						SchemaProps: spec.SchemaProps{
-							Type:   []string{"string"},
-							Format: "",
-						},
-					},
-					"tokens": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Limit tokens required of this flowcontrol",
-							Type:        []string{"integer"},
-							Format:      "int32",
-						},
-					},
-				},
-			},
-		},
 	}
 }
 
@@ -674,6 +613,174 @@ func schema_pkg_apis_proxy_v1alpha1_MaxRequestsInflightFlowControlSchema(ref com
 				},
 			},
 		},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitAcquire(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "RateLimitAcquire represents a acquire request for a resource.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireSpec"),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireStatus"),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireSpec", "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireRequest(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"flowControl": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"tokens": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Limit tokens required of this flowcontrol",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireResult(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"flowControl": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"accept": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"limit": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
+						},
+					},
+					"error": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+				},
+				Required: []string{"accept", "limit"},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "RateLimitAcquireSpec defines the request body for acquire",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"instance": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Rate limit client instance identity",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"requests": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Limit tokens requested",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireRequest"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireRequest"},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "RateLimitAcquireStatus defines the response body for acquire",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"results": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireResult"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireResult"},
 	}
 }
 
@@ -977,68 +1084,6 @@ func schema_pkg_apis_proxy_v1alpha1_RateLimitStatus(ref common.ReferenceCallback
 		},
 		Dependencies: []string{
 			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitItemStatus"},
-	}
-}
-
-func schema_pkg_apis_proxy_v1alpha1_ReteLimitRequest(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "ReteLimitRequest defines the request body to do limit",
-				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"instance": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Rate limit client instance identity",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
-					"requests": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Limit tokens requested",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.LimitRequest"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		Dependencies: []string{
-			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.LimitRequest"},
-	}
-}
-
-func schema_pkg_apis_proxy_v1alpha1_ReteLimitResult(ref common.ReferenceCallback) common.OpenAPIDefinition {
-	return common.OpenAPIDefinition{
-		Schema: spec.Schema{
-			SchemaProps: spec.SchemaProps{
-				Description: "ReteLimitResult defines the response body to do limit",
-				Type:        []string{"object"},
-				Properties: map[string]spec.Schema{
-					"results": {
-						SchemaProps: spec.SchemaProps{
-							Type: []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.LimitAcceptResult"),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		Dependencies: []string{
-			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.LimitAcceptResult"},
 	}
 }
 

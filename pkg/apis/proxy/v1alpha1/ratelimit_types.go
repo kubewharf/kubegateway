@@ -6,6 +6,7 @@ import (
 
 // +genclient
 // +genclient:nonNamespaced
+// +genclient:method=Acquire,verb=create,subresource=acquire,input=github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquire,result=github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquire
 // +k8s:openapi-gen=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
@@ -99,26 +100,37 @@ type EndpointInfo struct {
 	LastChange metav1.Time `json:"lastHeartbeat,omitempty" protobuf:"bytes,3,opt,name=lastHeartbeat"`
 }
 
-// ReteLimitRequest defines the request body to do limit
-type ReteLimitRequest struct {
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+
+// RateLimitAcquire represents a acquire request for a resource.
+type RateLimitAcquire struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty" protobuf:"bytes,1,opt,name=metadata"`
+
+	Spec   RateLimitAcquireSpec   `json:"spec,omitempty" protobuf:"bytes,2,opt,name=spec"`
+	Status RateLimitAcquireStatus `json:"status,omitempty" protobuf:"bytes,3,opt,name=status"`
+}
+
+// RateLimitAcquireSpec defines the request body for acquire
+type RateLimitAcquireSpec struct {
 	// Rate limit client instance identity
 	Instance string `json:"instance,omitempty" protobuf:"bytes,1,opt,name=instance"`
 	// Limit tokens requested
-	Requests []LimitRequest `json:"requests,omitempty" protobuf:"bytes,2,opt,name=requests"`
+	Requests []RateLimitAcquireRequest `json:"requests,omitempty" protobuf:"bytes,2,opt,name=requests"`
 }
 
-type LimitRequest struct {
+type RateLimitAcquireRequest struct {
 	FlowControl string `json:"flowControl,omitempty" protobuf:"bytes,1,opt,name=flowControl"`
 	// Limit tokens required of this flowcontrol
 	Tokens int32 `json:"tokens,omitempty" protobuf:"bytes,2,opt,name=tokens"`
 }
 
-// ReteLimitResult defines the response body to do limit
-type ReteLimitResult struct {
-	Results []LimitAcceptResult `json:"results,omitempty" protobuf:"bytes,1,opt,name=results"`
+// RateLimitAcquireStatus defines the response body for acquire
+type RateLimitAcquireStatus struct {
+	Results []RateLimitAcquireResult `json:"results,omitempty" protobuf:"bytes,1,opt,name=results"`
 }
 
-type LimitAcceptResult struct {
+type RateLimitAcquireResult struct {
 	FlowControl string `json:"flowControl,omitempty" protobuf:"bytes,1,opt,name=flowControl"`
 	Accept      bool   `json:"accept" protobuf:"bytes,2,opt,name=accept"`
 	Limit       int32  `json:"limit" protobuf:"bytes,3,opt,name=limit"`

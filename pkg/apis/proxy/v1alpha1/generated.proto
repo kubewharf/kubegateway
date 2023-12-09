@@ -209,16 +209,6 @@ message FlowControlSchemaConfiguration {
   optional TokenBucketFlowControlSchema globalTokenBucket = 5;
 }
 
-message LimitAcceptResult {
-  optional string flowControl = 1;
-
-  optional bool accept = 2;
-
-  optional int32 limit = 3;
-
-  optional string error = 4;
-}
-
 // Represents token bucket rate limit approach.
 message LimitItemDetail {
   // MaxRequestsInflight represents a maximum concurrent number of requests
@@ -231,13 +221,6 @@ message LimitItemDetail {
   // rate of 'qps'.
   // +optianal
   optional TokenBucketFlowControlSchema tokenBucket = 2;
-}
-
-message LimitRequest {
-  optional string flowControl = 1;
-
-  // Limit tokens required of this flowcontrol
-  optional int32 tokens = 2;
 }
 
 message LoggingConfig {
@@ -253,6 +236,46 @@ message LoggingConfig {
 message MaxRequestsInflightFlowControlSchema {
   // maximum concurrent number of requests
   optional int32 max = 1;
+}
+
+// RateLimitAcquire represents a acquire request for a resource.
+message RateLimitAcquire {
+  optional .k8s.io.apimachinery.pkg.apis.meta.v1.ObjectMeta metadata = 1;
+
+  optional RateLimitAcquireSpec spec = 2;
+
+  optional RateLimitAcquireStatus status = 3;
+}
+
+message RateLimitAcquireRequest {
+  optional string flowControl = 1;
+
+  // Limit tokens required of this flowcontrol
+  optional int32 tokens = 2;
+}
+
+message RateLimitAcquireResult {
+  optional string flowControl = 1;
+
+  optional bool accept = 2;
+
+  optional int32 limit = 3;
+
+  optional string error = 4;
+}
+
+// RateLimitAcquireSpec defines the request body for acquire
+message RateLimitAcquireSpec {
+  // Rate limit client instance identity
+  optional string instance = 1;
+
+  // Limit tokens requested
+  repeated RateLimitAcquireRequest requests = 2;
+}
+
+// RateLimitAcquireStatus defines the response body for acquire
+message RateLimitAcquireStatus {
+  repeated RateLimitAcquireResult results = 1;
 }
 
 // RateLimitCondition is the Schema for the upstreamclusters API
@@ -322,20 +345,6 @@ message RateLimitSpec {
 message RateLimitStatus {
   // Client flow control settings, e.g. qps and burst
   repeated RateLimitItemStatus limitItemStatuses = 1;
-}
-
-// ReteLimitRequest defines the request body to do limit
-message ReteLimitRequest {
-  // Rate limit client instance identity
-  optional string instance = 1;
-
-  // Limit tokens requested
-  repeated LimitRequest requests = 2;
-}
-
-// ReteLimitResult defines the response body to do limit
-message ReteLimitResult {
-  repeated LimitAcceptResult results = 1;
 }
 
 message SecretReferecence {

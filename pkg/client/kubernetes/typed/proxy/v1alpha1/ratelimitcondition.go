@@ -47,6 +47,8 @@ type RateLimitConditionInterface interface {
 	List(ctx context.Context, opts v1.ListOptions) (*v1alpha1.RateLimitConditionList, error)
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
 	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.RateLimitCondition, err error)
+	Acquire(ctx context.Context, rateLimitConditionName string, rateLimitAcquire *v1alpha1.RateLimitAcquire, opts v1.CreateOptions) (*v1alpha1.RateLimitAcquire, error)
+
 	RateLimitConditionExpansion
 }
 
@@ -178,6 +180,20 @@ func (c *rateLimitConditions) Patch(ctx context.Context, name string, pt types.P
 		SubResource(subresources...).
 		VersionedParams(&opts, scheme.ParameterCodec).
 		Body(data).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// Acquire takes the representation of a rateLimitAcquire and creates it.  Returns the server's representation of the rateLimitAcquire, and an error, if there is any.
+func (c *rateLimitConditions) Acquire(ctx context.Context, rateLimitConditionName string, rateLimitAcquire *v1alpha1.RateLimitAcquire, opts v1.CreateOptions) (result *v1alpha1.RateLimitAcquire, err error) {
+	result = &v1alpha1.RateLimitAcquire{}
+	err = c.client.Post().
+		Resource("ratelimitconditions").
+		Name(rateLimitConditionName).
+		SubResource("acquire").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(rateLimitAcquire).
 		Do(ctx).
 		Into(result)
 	return
