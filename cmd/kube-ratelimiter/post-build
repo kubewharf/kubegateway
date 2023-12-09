@@ -1,0 +1,2 @@
+#!/bin/bash
+cp ${MAKE_RULES_WORKSPACE}/build/kube-ratelimiter/* "${MAKE_RULES_WORKSPACE}/output"

@@ -3,6 +3,8 @@ module github.com/kubewharf/kubegateway
 go 1.16
 
 require (
+	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/emicklei/go-restful v2.9.5+incompatible
 	github.com/go-openapi/spec v0.19.3
 	github.com/gobeam/stringy v0.0.5
 	github.com/gogo/protobuf v1.3.2
@@ -16,6 +18,9 @@ require (
 	github.com/zoumo/golib v0.0.0-20211216092524-c9bb48ad7bef
 	github.com/zoumo/goset v0.2.0
 	golang.org/x/net v0.0.0-20211101194204-95aca89e93de
+	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
+	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
+	google.golang.org/appengine v1.6.5 // indirect
 	k8s.io/api v0.18.10
 	k8s.io/apiextensions-apiserver v0.18.10
 	k8s.io/apimachinery v0.18.19
