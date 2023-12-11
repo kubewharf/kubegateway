@@ -30,12 +30,12 @@ func NewRESTStorageProvider(scheme *runtime.Scheme, factory *registry.RESTStorag
 	if err != nil {
 		return nil, err
 	}
-	rateLimitStatus, err := newRateLimitStatusOption(factory)
+	rateLimitConditionOption, err := newRateLimitConditionOption(factory)
 	if err != nil {
 		return nil, err
 	}
 
-	return registry.NewRESTStorageProvider(scheme, group, upstreamClusterOption, rateLimitStatus), nil
+	return registry.NewRESTStorageProvider(scheme, group, upstreamClusterOption, rateLimitConditionOption), nil
 }
 
 func newUpstreamClusterOption(factory *registry.RESTStorageOptionsFactory) (registry.RESTStorageOptions, error) {
@@ -56,7 +56,7 @@ func newUpstreamClusterOption(factory *registry.RESTStorageOptionsFactory) (regi
 	return options, nil
 }
 
-func newRateLimitStatusOption(factory *registry.RESTStorageOptionsFactory) (registry.RESTStorageOptions, error) {
+func newRateLimitConditionOption(factory *registry.RESTStorageOptionsFactory) (registry.RESTStorageOptions, error) {
 	gvkr := runtimeschema.GroupVersionKindResource{
 		Group:    proxyv1alpha1.SchemeGroupVersion.Group,
 		Version:  proxyv1alpha1.SchemeGroupVersion.Version,
