@@ -58,12 +58,12 @@ type EndpointPicker interface {
 
 // endpointPickStrategy implement EndpointPicker interface
 type endpointPickStrategy struct {
-	cluster     *ClusterInfo
-	strategy    proxyv1alpha1.Strategy
-	flowControl gatewayflowcontrol.FlowControl
+	cluster         *ClusterInfo
+	strategy        proxyv1alpha1.Strategy
+	flowControl     gatewayflowcontrol.FlowControl
 	flowControlName string
-	upstreams   []string
-	enableLog   bool
+	upstreams       []string
+	enableLog       bool
 }
 
 func (s *endpointPickStrategy) Pop() (*EndpointInfo, error) {
@@ -501,12 +501,16 @@ func (c *ClusterInfo) MatchAttributes(requestAttributes authorizer.Attributes) (
 		return nil, ErrNoRouterRuleMatches
 	}
 
+	flowControlName := policy.FlowControlSchemaName
+	if len(flowControlName) == 0 {
+		flowControlName = "system-default"
+	}
 	result := &endpointPickStrategy{
-		cluster:     c,
-		strategy:    policy.Strategy,
-		flowControl: c.getFlowSchema(policy.FlowControlSchemaName),
-		flowControlName: policy.FlowControlSchemaName,
-		enableLog:   isLogEnabled(logging.Mode, policy.LogMode),
+		cluster:         c,
+		strategy:        policy.Strategy,
+		flowControl:     c.getFlowSchema(policy.FlowControlSchemaName),
+		flowControlName: flowControlName,
+		enableLog:       isLogEnabled(logging.Mode, policy.LogMode),
 	}
 
 	if len(policy.UpstreamSubset) != 0 {
