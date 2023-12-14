@@ -203,7 +203,7 @@ func (c *clientSets) sync() {
 			c.setLeaderStatus(int(ep.ShardID), ep.Leader, true)
 		}
 
-		_, err := c.getOrCreateClient(server)
+		_, err := c.getOrCreateClient(ep.Leader)
 		if err != nil {
 			klog.Errorf("Update client: %v", err)
 			continue
