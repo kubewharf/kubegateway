@@ -39,6 +39,12 @@ func MonitorAfterRequest(
 		serverName = extraRequestInfo.UpstreamCluster
 		clientID = extraRequestInfo.Instance
 	}
+	if len(serverName) == 0 {
+		serverName = "empty"
+	}
+	if len(clientID) == 0 {
+		clientID = "empty"
+	}
 
 	metrics.MonitorLimiterRequest(req,
 		serverName,
