@@ -1,2 +1,2 @@
 #!/bin/bash
-cp ${MAKE_RULES_WORKSPACE}/build/kube-gateway/* "${MAKE_RULES_WORKSPACE}/output"
+cp -r ${MAKE_RULES_WORKSPACE}/build/kube-gateway/* "${MAKE_RULES_WORKSPACE}/output"
