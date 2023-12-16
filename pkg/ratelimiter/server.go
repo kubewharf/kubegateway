@@ -1,10 +1,10 @@
 package ratelimiter
 
 import (
-	apiserver "k8s.io/apiserver/pkg/server"
-	"k8s.io/client-go/informers"
 	"net/http"
 
+	apiserver "k8s.io/apiserver/pkg/server"
+	"k8s.io/client-go/informers"
 	clientset "k8s.io/client-go/kubernetes"
 
 	"github.com/kubewharf/kubegateway/pkg/ratelimiter/limiter"
@@ -21,6 +21,8 @@ type Server struct {
 
 	SecureHandler   http.Handler
 	InsecureHandler http.Handler
+
+	ServerStarted chan struct{}
 }
 
 func (s *Server) PrepareRun() PreparedServer {
@@ -53,6 +55,7 @@ func (s *Server) Run(stopCh <-chan struct{}) (err error) {
 
 	go s.RateLimiter.Run(internalStopCh)
 
+	close(s.ServerStarted)
 	<-internalStopCh
 	if stoppedCh != nil {
 		<-stoppedCh

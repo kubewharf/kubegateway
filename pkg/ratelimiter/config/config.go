@@ -53,6 +53,7 @@ func (c *CompletedConfig) New(name string) (ratelimiter.PreparedServer, error) {
 		Client:          c.Client,
 		InformerFactory: c.InformerFactory,
 		RateLimiter:     c.RateLimiter,
+		ServerStarted:   make(chan struct{}),
 	}
 
 	requestInfoResolver := &apirequest.RequestInfoFactory{
@@ -77,10 +78,27 @@ func (c *CompletedConfig) New(name string) (ratelimiter.PreparedServer, error) {
 		if err != nil {
 			return nil, err
 		}
+		controlPlaneServer.AddSidecarServers()
 		controlPlaneServer.GenericAPIServer.AddPostStartHookOrDie(name, func(context apiserver.PostStartHookContext) error {
-			err := rateLimiter.Run(context.StopCh)
-			klog.Infof("Ratelimiter server existed: %v", err)
-			return err
+			errCh := make(chan error)
+			klog.Infof("Starting ratelimiter server")
+			// start sidecar in another goroutine
+			go func() {
+				err := rateLimiter.Run(context.StopCh)
+				if err != nil {
+					errCh <- err
+					return
+				}
+			}()
+
+			select {
+			case err := <-errCh:
+				// return err if failed to start sidecar server
+				return err
+			case <-rateLimiter.ServerStarted:
+				// return nil after sidecar server started
+				return nil
+			}
 		})
 
 		return controlPlaneServer.PrepareRun(), nil

@@ -15,11 +15,9 @@
 package options
 
 import (
-	"fmt"
 	"net"
 	"time"
 
-	"github.com/spf13/pflag"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiserveroptions "k8s.io/apiserver/pkg/server/options"
 	"k8s.io/client-go/informers"
@@ -50,7 +48,7 @@ type Options struct {
 	// LimitServer defines the configuration of leader election client.
 	LimitServer options.RateLimitOptions
 
-	SecureServing *apiserveroptions.SecureServingOptions
+	SecureServing *options.SecureServingOptions
 	// TODO: remove insecure serving mode
 	InsecureServing *apiserveroptions.DeprecatedInsecureServingOptions
 	Authentication  *apiserveroptions.DelegatingAuthenticationOptions
@@ -72,12 +70,10 @@ func NewOptions() *Options {
 				WithServerRun().
 				WithProcessInfo(apiserveroptions.NewProcessInfo("kube-gateway", "kube-system"))
 			opt.RecommendedOptions = recommended
+			opt.SecureServing.BindPort = 0
 			return opt
 		}(),
-		SecureServing: &apiserveroptions.SecureServingOptions{
-			BindAddress: net.ParseIP("0.0.0.0"),
-			BindPort:    0,
-		},
+		SecureServing: options.NewSecureServingOptions(),
 		InsecureServing: &apiserveroptions.DeprecatedInsecureServingOptions{
 			BindAddress: net.ParseIP("0.0.0.0"),
 			BindPort:    18080,
@@ -108,8 +104,8 @@ func NewOptions() *Options {
 	}
 
 	// Set the PairName but leave certificate directory blank to generate in-memory by default
-	o.SecureServing.ServerCert.CertDirectory = ""
-	o.SecureServing.ServerCert.PairName = "kube-gateway-ratelimiter"
+	o.ControlPlane.SecureServing.ServerCert.CertDirectory = ""
+	o.ControlPlane.SecureServing.ServerCert.PairName = "kube-gateway-ratelimiter"
 
 	o.ClientConnection.QPS = 10000
 	o.ClientConnection.Burst = 10000
@@ -123,9 +119,6 @@ func (o *Options) Flags() cliflag.NamedFlagSets {
 
 	secureServing := fss.FlagSet("ratelimiter secure serving")
 	o.SecureServing.AddFlags(secureServing)
-	secureServing.VisitAll(func(f *pflag.Flag) {
-		f.Name = fmt.Sprintf("ratelimiter-%s", f.Name)
-	})
 
 	o.InsecureServing.AddUnqualifiedFlags(fss.FlagSet("insecure serving"))
 	o.Authentication.AddFlags(fss.FlagSet("authentication"))
@@ -191,10 +184,10 @@ func (o *Options) ApplyTo(c *limitconfig.Config) error {
 	if err := o.InsecureServing.ApplyTo(&c.InsecureServing); err != nil {
 		return err
 	}
-	if err := o.SecureServing.ApplyTo(&c.SecureServing); err != nil {
+	if err := o.SecureServing.ApplyTo(&c.SecureServing, o.ControlPlane.SecureServing.SecureServingOptions); err != nil {
 		return err
 	}
-	if o.SecureServing.BindPort != 0 || o.SecureServing.Listener != nil {
+	if o.SecureServing.SecurePort != 0 || c.SecureServing.Listener != nil {
 		if err := o.Authentication.ApplyTo(&c.Authentication, c.SecureServing, nil); err != nil {
 			return err
 		}
@@ -207,7 +200,7 @@ func (o *Options) ApplyTo(c *limitconfig.Config) error {
 
 func (o *Options) Validate() []error {
 	errors := []error{}
-	errors = append(errors, o.SecureServing.Validate()...)
+	errors = append(errors, o.SecureServing.ValidateWith(o.ControlPlane.SecureServing.SecureServingOptions, o.LimitServer.EnableControlPlane)...)
 	errors = append(errors, o.InsecureServing.Validate()...)
 	errors = append(errors, o.Debugging.Validate()...)
 	errors = append(errors, o.Authentication.Validate()...)
