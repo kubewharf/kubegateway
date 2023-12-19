@@ -252,7 +252,7 @@ func (f *remoteWrapper) newFlowControl(limitItem proxyv1alpha1.RateLimitItemConf
 		counterFun = counter.Count
 	}
 
-	return newFlowControlCounter(limitItem, fc, f.flowControlCache.meter, counterFun)
+	return newFlowControlCounter(limitItem, fc, f.flowControlCache, counterFun)
 }
 
 func (f *remoteWrapper) ExpectToken() int32 {

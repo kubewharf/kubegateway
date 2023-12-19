@@ -49,7 +49,7 @@ func init() {
 
 func newFlowControlCounter(limitItem proxyv1alpha1.RateLimitItemConfiguration,
 	fc flowcontrol.FlowControl,
-	meter *meter,
+	flowControlCache *flowControlCache,
 	counter CounterFun,
 ) GlobalCounterFlowControl {
 	if limitItem.Strategy != proxyv1alpha1.GlobalCountLimit {
@@ -60,7 +60,8 @@ func newFlowControlCounter(limitItem proxyv1alpha1.RateLimitItemConfiguration,
 	case proxyv1alpha1.MaxRequestsInflight:
 		w := &maxInflightWrapper{
 			FlowControl: fc,
-			meter:       meter,
+			fcc:         flowControlCache,
+			meter:       flowControlCache.meter,
 			counter:     counter,
 			max:         limitItem.MaxRequestsInflight.Max,
 		}
@@ -69,13 +70,23 @@ func newFlowControlCounter(limitItem proxyv1alpha1.RateLimitItemConfiguration,
 	case proxyv1alpha1.TokenBucket:
 		w := &tokenBucketWrapper{
 			FlowControl: fc,
-			meter:       meter,
+			fcc:         flowControlCache,
+			meter:       flowControlCache.meter,
 			counter:     counter,
 		}
 		w.Resize(uint32(limitItem.TokenBucket.QPS), uint32(limitItem.TokenBucket.Burst))
 		return w
 	}
-	return &tokenBucketWrapper{FlowControl: fc}
+
+	// default
+	w := &tokenBucketWrapper{
+		FlowControl: fc,
+		fcc:         flowControlCache,
+		meter:       flowControlCache.meter,
+		counter:     counter,
+	}
+	w.Resize(uint32(limitItem.TokenBucket.QPS), uint32(limitItem.TokenBucket.Burst))
+	return w
 }
 
 type CounterFun func(int32)
@@ -89,6 +100,7 @@ type GlobalCounterFlowControl interface {
 
 type maxInflightWrapper struct {
 	flowcontrol.FlowControl
+	fcc     *flowControlCache
 	meter   *meter
 	counter CounterFun
 	lock    sync.Mutex
@@ -124,9 +136,19 @@ func (m *maxInflightWrapper) CurrentToken() int32 {
 
 func (m *maxInflightWrapper) SetLimit(result *proxyv1alpha1.RateLimitAcquireResult) bool {
 	if len(result.Error) != 0 {
-		inflight := atomic.LoadInt32(&m.meter.inflight)
-		m.FlowControl.Resize(uint32(inflight), 0)
-		m.serverUnavailable = true
+		m.lock.Lock()
+		if !m.serverUnavailable {
+			inflight := atomic.LoadInt32(&m.meter.inflight)
+			localMax := m.fcc.local.localConfig.MaxRequestsInflight.Max
+			if inflight < localMax {
+				inflight = localMax
+			}
+			klog.V(2).Infof("[global maxInflight] cluster=%q resize flowcontrol=%s max=%v for error: %v",
+				m.fcc.cluster, m.fcc.local.localConfig.Name, inflight, result.Error)
+			m.FlowControl.Resize(uint32(inflight), 0)
+			m.serverUnavailable = true
+		}
+		m.lock.Unlock()
 		return false
 	}
 
@@ -192,6 +214,7 @@ func (m *maxInflightWrapper) Release() {
 
 type tokenBucketWrapper struct {
 	flowcontrol.FlowControl
+	fcc     *flowControlCache
 	meter   *meter
 	counter CounterFun
 	lock    sync.Mutex
@@ -231,10 +254,19 @@ func (m *tokenBucketWrapper) CurrentToken() int32 {
 
 func (m *tokenBucketWrapper) SetLimit(result *proxyv1alpha1.RateLimitAcquireResult) bool {
 	if len(result.Error) != 0 {
-		lastQPS := m.meter.rate()
-		m.FlowControl.Resize(uint32(lastQPS), uint32(lastQPS))
 		m.lock.Lock()
-		m.serverUnavailable = true
+		if !m.serverUnavailable {
+			lastQPS := m.meter.rate()
+			localQPS := m.fcc.local.localConfig.TokenBucket.QPS
+			if lastQPS < float64(localQPS) {
+				lastQPS = float64(localQPS)
+			}
+			klog.V(2).Infof("[global tokenBucket] cluster=%q resize flowcontrol=%s qps=%v for error: %v",
+				m.fcc.cluster, m.fcc.local.localConfig.Name, lastQPS, result.Error)
+
+			m.FlowControl.Resize(uint32(lastQPS), uint32(lastQPS))
+			m.serverUnavailable = true
+		}
 		m.lock.Unlock()
 		return m.ExpectToken() > 0
 	}
@@ -253,6 +285,7 @@ func (m *tokenBucketWrapper) SetLimit(result *proxyv1alpha1.RateLimitAcquireResu
 		}
 		atomic.AddInt32(&m.tokens, result.Limit)
 	}
+
 	return m.ExpectToken() > 0
 }
 
@@ -284,17 +317,22 @@ func (m *tokenBucketWrapper) Resize(qps uint32, burst uint32) bool {
 }
 
 func (m *tokenBucketWrapper) TryAcquire() bool {
-	if m.serverUnavailable {
-		return m.FlowControl.TryAcquire()
+	acquire := m.FlowControl.TryAcquire()
+
+	if m.serverUnavailable || !acquire {
+		return acquire
 	}
 
-	acquire := false
-	token := atomic.AddInt32(&m.tokens, -1)
-	if token < 0 {
-		atomic.AddInt32(&m.tokens, 1)
-	} else {
-		acquire = m.FlowControl.TryAcquire()
+	tryAcquire := func() bool {
+		token := atomic.AddInt32(&m.tokens, -1)
+		if token < 0 {
+			atomic.AddInt32(&m.tokens, 1)
+			return false
+		}
+		return true
 	}
+
+	acquire = tryAcquire()
 
 	if m.counter != nil {
 		if acquire {
