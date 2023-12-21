@@ -146,6 +146,11 @@ func (o *Options) Config() (*limitconfig.Config, error) {
 		if err := o.ControlPlane.RecommendedOptions.Complete(); err != nil {
 			return nil, err
 		}
+
+		// add authorization mode option
+		o.ControlPlane.Authorization = kubewharfoptions.NewAuthorizationOptions()
+		o.ControlPlane.Authorization.Modes = o.Authorization.Modes
+
 		controlPlaneServerRunOptions := options2.ControlPlaneServerRunOptions{
 			ControlPlaneOptions: o.ControlPlane,
 		}

@@ -174,7 +174,7 @@ func (s *objectStore) createOrUpdate(condition *proxyv1alpha1.RateLimitCondition
 			return false, nil
 		}
 
-		return true, nil
+		return true, err
 	})
 
 	return item, err
