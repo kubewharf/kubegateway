@@ -269,7 +269,7 @@ func (f *remoteWrapper) CurrentToken() int32 {
 	return -1
 }
 
-func (f *remoteWrapper) SetLimit(result *proxyv1alpha1.RateLimitAcquireResult) bool {
+func (f *remoteWrapper) SetLimit(result *AcquireResult) bool {
 	if f.GlobalCounterFlowControl != nil {
 		return f.GlobalCounterFlowControl.SetLimit(result)
 	}

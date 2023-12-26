@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	"github.com/kubewharf/kubegateway/pkg/flowcontrols/flowcontrol"
@@ -23,6 +24,10 @@ var (
 	GlobalMaxInflightBurstMinInflight    = int32(1)
 	GlobalMaxInflightBatchAcquirePercent = int32(10)
 	GlobalMaxInflightBatchAcquireMin     = int32(1)
+)
+
+const (
+	waitAcquireTimeout = time.Millisecond * 300
 )
 
 func init() {
@@ -64,6 +69,7 @@ func newFlowControlCounter(limitItem proxyv1alpha1.RateLimitItemConfiguration,
 			meter:       flowControlCache.meter,
 			counter:     counter,
 			max:         limitItem.MaxRequestsInflight.Max,
+			cond:        sync.NewCond(&sync.Mutex{}),
 		}
 		w.Resize(uint32(limitItem.MaxRequestsInflight.Max), 0)
 		return w
@@ -73,6 +79,7 @@ func newFlowControlCounter(limitItem proxyv1alpha1.RateLimitItemConfiguration,
 			fcc:         flowControlCache,
 			meter:       flowControlCache.meter,
 			counter:     counter,
+			cond:        sync.NewCond(&sync.Mutex{}),
 		}
 		w.Resize(uint32(limitItem.TokenBucket.QPS), uint32(limitItem.TokenBucket.Burst))
 		return w
@@ -84,6 +91,7 @@ func newFlowControlCounter(limitItem proxyv1alpha1.RateLimitItemConfiguration,
 		fcc:         flowControlCache,
 		meter:       flowControlCache.meter,
 		counter:     counter,
+		cond:        sync.NewCond(&sync.Mutex{}),
 	}
 	w.Resize(uint32(limitItem.TokenBucket.QPS), uint32(limitItem.TokenBucket.Burst))
 	return w
@@ -93,7 +101,7 @@ type CounterFun func(int32)
 
 type GlobalCounterFlowControl interface {
 	flowcontrol.FlowControl
-	SetLimit(result *proxyv1alpha1.RateLimitAcquireResult) bool
+	SetLimit(result *AcquireResult) bool
 	ExpectToken() int32
 	CurrentToken() int32
 }
@@ -104,13 +112,16 @@ type maxInflightWrapper struct {
 	meter   *meter
 	counter CounterFun
 	lock    sync.Mutex
+	cond    *sync.Cond
 
-	serverUnavailable bool
+	lastAcquireTime   int64
+	serverUnavailable uint32
 	max               int32
 	reserve           int32
 
 	acquiredMaxInflight int32
 	overLimited         int32
+	waitInflight        int32
 }
 
 func (m *maxInflightWrapper) ExpectToken() int32 {
@@ -120,12 +131,18 @@ func (m *maxInflightWrapper) ExpectToken() int32 {
 	limitMax := atomic.LoadInt32(&m.acquiredMaxInflight)
 	overLimited := atomic.LoadInt32(&m.overLimited)
 
-	if overLimited < 1 && inflight <= limitMax && inflight > 0 {
+	if overLimited < 1 && inflight <= limitMax && inflight > 1 {
 		acquire = m.reserve * GlobalMaxInflightBatchAcquirePercent / 100
 		if acquire < GlobalMaxInflightBatchAcquireMin {
 			acquire = GlobalMaxInflightBatchAcquireMin
 		}
 	}
+
+	wait := atomic.LoadInt32(&m.waitInflight)
+	if acquire < wait {
+		acquire = wait
+	}
+
 	acquire += inflight
 	return acquire
 }
@@ -134,10 +151,11 @@ func (m *maxInflightWrapper) CurrentToken() int32 {
 	return limitMax
 }
 
-func (m *maxInflightWrapper) SetLimit(result *proxyv1alpha1.RateLimitAcquireResult) bool {
+func (m *maxInflightWrapper) SetLimit(acquireResult *AcquireResult) bool {
+	result := acquireResult.result
 	if len(result.Error) != 0 {
 		m.lock.Lock()
-		if !m.serverUnavailable {
+		if atomic.LoadUint32(&m.serverUnavailable) == 0 {
 			inflight := atomic.LoadInt32(&m.meter.inflight)
 			localMax := m.fcc.local.localConfig.MaxRequestsInflight.Max
 			if inflight < localMax {
@@ -146,7 +164,7 @@ func (m *maxInflightWrapper) SetLimit(result *proxyv1alpha1.RateLimitAcquireResu
 			klog.V(2).Infof("[global maxInflight] cluster=%q resize flowcontrol=%s max=%v for error: %v",
 				m.fcc.cluster, m.fcc.local.localConfig.Name, inflight, result.Error)
 			m.FlowControl.Resize(uint32(inflight), 0)
-			m.serverUnavailable = true
+			atomic.StoreUint32(&m.serverUnavailable, 1)
 		}
 		m.lock.Unlock()
 		return false
@@ -155,7 +173,9 @@ func (m *maxInflightWrapper) SetLimit(result *proxyv1alpha1.RateLimitAcquireResu
 	m.lock.Lock()
 	defer m.lock.Unlock()
 	if result.Accept {
-		m.serverUnavailable = false
+		if atomic.LoadUint32(&m.serverUnavailable) == 1 {
+			atomic.StoreUint32(&m.serverUnavailable, 0)
+		}
 
 		limit := result.Limit
 		if limit < m.reserve {
@@ -172,6 +192,9 @@ func (m *maxInflightWrapper) SetLimit(result *proxyv1alpha1.RateLimitAcquireResu
 		atomic.StoreInt32(&m.acquiredMaxInflight, result.Limit)
 		m.FlowControl.Resize(uint32(result.Limit), 0)
 	}
+
+	atomic.StoreInt64(&m.lastAcquireTime, acquireResult.requestTime)
+	m.cond.Broadcast()
 	return false
 }
 
@@ -186,14 +209,36 @@ func (m *maxInflightWrapper) Resize(max uint32, burst uint32) bool {
 
 	m.max = int32(max)
 
-	if !m.serverUnavailable {
+	if atomic.LoadUint32(&m.serverUnavailable) == 0 {
 		return m.FlowControl.Resize(uint32(m.reserve), 0)
 	}
 	return true
 }
 
 func (m *maxInflightWrapper) TryAcquire() bool {
-	acquire := m.FlowControl.TryAcquire()
+	waitInflight := atomic.AddInt32(&m.waitInflight, 1)
+
+	if m.counter == nil || atomic.LoadUint32(&m.serverUnavailable) == 1 {
+		return m.FlowControl.TryAcquire()
+	}
+
+	currentInflight := atomic.LoadInt32(&m.meter.inflight)
+	naxInflight := atomic.LoadInt32(&m.acquiredMaxInflight)
+	acquire := false
+	if waitInflight+currentInflight <= naxInflight {
+		acquire = m.FlowControl.TryAcquire()
+	}
+
+	if !acquire {
+		requestTime := time.Now().UnixNano()
+		m.counter(0)
+		waitAcquire(m.cond, requestTime, &m.lastAcquireTime)
+		acquire = m.FlowControl.TryAcquire()
+
+	}
+
+	atomic.AddInt32(&m.waitInflight, -1)
+
 	if m.counter != nil {
 		if acquire {
 			m.counter(1)
@@ -218,8 +263,10 @@ type tokenBucketWrapper struct {
 	meter   *meter
 	counter CounterFun
 	lock    sync.Mutex
+	cond    *sync.Cond
 
-	serverUnavailable bool
+	lastAcquireTime   int64
+	serverUnavailable uint32
 	tokens            int32
 	reserve           int32
 	tokenBatch        int32
@@ -252,10 +299,11 @@ func (m *tokenBucketWrapper) CurrentToken() int32 {
 	return token
 }
 
-func (m *tokenBucketWrapper) SetLimit(result *proxyv1alpha1.RateLimitAcquireResult) bool {
+func (m *tokenBucketWrapper) SetLimit(acquireResult *AcquireResult) bool {
+	result := acquireResult.result
 	if len(result.Error) != 0 {
 		m.lock.Lock()
-		if !m.serverUnavailable {
+		if atomic.LoadUint32(&m.serverUnavailable) == 0 {
 			lastQPS := m.meter.rate()
 			localQPS := m.fcc.local.localConfig.TokenBucket.QPS
 			if lastQPS < float64(localQPS) {
@@ -265,17 +313,17 @@ func (m *tokenBucketWrapper) SetLimit(result *proxyv1alpha1.RateLimitAcquireResu
 				m.fcc.cluster, m.fcc.local.localConfig.Name, lastQPS, result.Error)
 
 			m.FlowControl.Resize(uint32(lastQPS), uint32(lastQPS))
-			m.serverUnavailable = true
+			atomic.StoreUint32(&m.serverUnavailable, 1)
 		}
 		m.lock.Unlock()
 		return m.ExpectToken() > 0
 	}
 	if result.Accept {
-		if m.serverUnavailable {
+		if atomic.LoadUint32(&m.serverUnavailable) == 1 {
 			m.lock.Lock()
-			if m.serverUnavailable {
+			if atomic.LoadUint32(&m.serverUnavailable) == 1 {
 				m.FlowControl.Resize(m.qps, m.burst)
-				m.serverUnavailable = false
+				atomic.StoreUint32(&m.serverUnavailable, 0)
 			}
 			m.lock.Unlock()
 		}
@@ -286,6 +334,8 @@ func (m *tokenBucketWrapper) SetLimit(result *proxyv1alpha1.RateLimitAcquireResu
 		atomic.AddInt32(&m.tokens, result.Limit)
 	}
 
+	atomic.StoreInt64(&m.lastAcquireTime, acquireResult.requestTime)
+	m.cond.Broadcast()
 	return m.ExpectToken() > 0
 }
 
@@ -310,7 +360,7 @@ func (m *tokenBucketWrapper) Resize(qps uint32, burst uint32) bool {
 	}
 	m.qps = qps
 	m.burst = qps
-	if !m.serverUnavailable {
+	if atomic.LoadUint32(&m.serverUnavailable) == 0 {
 		return m.FlowControl.Resize(qps, burst)
 	}
 	return false
@@ -319,7 +369,7 @@ func (m *tokenBucketWrapper) Resize(qps uint32, burst uint32) bool {
 func (m *tokenBucketWrapper) TryAcquire() bool {
 	acquire := m.FlowControl.TryAcquire()
 
-	if m.serverUnavailable || !acquire {
+	if !acquire || atomic.LoadUint32(&m.serverUnavailable) == 1 {
 		return acquire
 	}
 
@@ -333,6 +383,12 @@ func (m *tokenBucketWrapper) TryAcquire() bool {
 	}
 
 	acquire = tryAcquire()
+	if !acquire && m.counter != nil {
+		requestTime := time.Now().UnixNano()
+		m.counter(0)
+		waitAcquire(m.cond, requestTime, &m.lastAcquireTime)
+		acquire = tryAcquire()
+	}
 
 	if m.counter != nil {
 		if acquire {
@@ -357,6 +413,40 @@ func (f emptyGlobalWrapper) ExpectToken() int32 {
 	return 0
 }
 
-func (f emptyGlobalWrapper) SetLimit(limit *proxyv1alpha1.RateLimitAcquireResult) bool {
+func (f emptyGlobalWrapper) SetLimit(limit *AcquireResult) bool {
 	return false
+}
+
+func waitAcquire(cond *sync.Cond, requestTime int64, lastAcquireTime *int64) {
+	start := time.Now()
+	wait := make(chan struct{})
+	var acquireTime int64
+	waitCount := 0
+	go func() {
+		for i := 0; i < 10; i++ {
+			cond.L.Lock()
+			cond.Wait()
+			cond.L.Unlock()
+
+			acquireTime = atomic.LoadInt64(lastAcquireTime)
+			if acquireTime > requestTime {
+				break
+			}
+			waitCount++
+		}
+		wait <- struct{}{}
+	}()
+
+	select {
+	case <-wait:
+	case <-time.After(waitAcquireTimeout):
+	}
+
+	cost := time.Since(start)
+
+	// TODO metric
+
+	if cost > time.Millisecond*100 {
+		klog.V(4).Infof("wait acquire cost %v, start: %v, acquire: %v", cost, requestTime, acquireTime)
+	}
 }

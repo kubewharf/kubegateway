@@ -20,7 +20,7 @@ import (
 const (
 	MaxIdealDuration    = time.Millisecond * 900
 	MaxLimitRequestQPS  = 200
-	LimitRequestTimeout = time.Second * 1
+	LimitRequestTimeout = time.Millisecond * 290
 )
 
 func NewGlobalCounterProvider(ctx context.Context, cluster string, clientSets clientsets.ClientSets, clientID string) GlobalCounterProvider {
@@ -175,10 +175,17 @@ func (g *globalCounterManager) doAcquire() {
 		return
 	}
 
-	acquireResult, err := client.ProxyV1alpha1().RateLimitConditions().Acquire(context.TODO(), g.cluster, acquireRequest, metav1.CreateOptions{})
+	requestTime := time.Now().UnixNano()
+	ctx, cancel := context.WithTimeout(context.TODO(), LimitRequestTimeout)
+	defer cancel()
+
+	acquireResult, err := client.ProxyV1alpha1().RateLimitConditions().Acquire(ctx, g.cluster, acquireRequest, metav1.CreateOptions{})
 	if err != nil {
 		klog.Errorf("Do acquire request error: %v", err)
 		result = requestReasonRateLimiterError
+		if os.IsTimeout(err) {
+			result = requestReasonTimeout
+		}
 
 		acquireResult = &proxyv1alpha1.RateLimitAcquire{}
 		for _, r := range acquireRequest.Spec.Requests {
@@ -193,9 +200,10 @@ func (g *globalCounterManager) doAcquire() {
 	for _, r := range acquireResult.Status.Results {
 		rs := r
 		if counter := g.counterMap[r.FlowControl]; counter != nil {
-			acceptInfo := &AcceptInfo{
-				request: limitRequestsMap[r.FlowControl],
-				result:  &rs,
+			acceptInfo := &AcquireResult{
+				request:     limitRequestsMap[r.FlowControl],
+				result:      &rs,
+				requestTime: requestTime,
 			}
 			counter.send(acceptInfo)
 		}
@@ -207,7 +215,9 @@ func (g *globalCounterManager) doAcquire() {
 		metrics.RecordRateLimiterRequest(g.cluster, "acquire", reason, rs.FlowControl, -1)
 	}
 
-	result = requestReasonSuccess
+	if len(result) == 0 {
+		result = requestReasonSuccess
+	}
 }
 
 func (g *globalCounterManager) acquireRequest() (*proxyv1alpha1.RateLimitAcquire, map[string]*proxyv1alpha1.RateLimitAcquireRequest) {
@@ -280,9 +290,10 @@ type globalCounter struct {
 	limitedRate  util.RateMeter
 }
 
-type AcceptInfo struct {
-	request *proxyv1alpha1.RateLimitAcquireRequest
-	result  *proxyv1alpha1.RateLimitAcquireResult
+type AcquireResult struct {
+	request     *proxyv1alpha1.RateLimitAcquireRequest
+	result      *proxyv1alpha1.RateLimitAcquireResult
+	requestTime int64
 }
 
 func (g *globalCounter) Count(delta int32) {
@@ -297,7 +308,7 @@ func (g *globalCounter) stop() {
 	close(g.eventCh)
 }
 
-func (g *globalCounter) send(response *AcceptInfo) {
+func (g *globalCounter) send(response *AcquireResult) {
 	if len(response.result.Error) != 0 {
 		klog.Warningf("[global counter] cluster=%q flowcontrol=%q global count response err: %v",
 			g.manager.cluster, g.name, response.result.Error)
@@ -314,7 +325,7 @@ func (g *globalCounter) send(response *AcceptInfo) {
 		}
 	}
 
-	if g.flowControl.SetLimit(response.result) {
+	if g.flowControl.SetLimit(response) {
 		go func() {
 			<-time.NewTimer(time.Millisecond * 200).C
 			g.Count(1)
@@ -350,7 +361,9 @@ func (g *globalCounter) resetCheck(stopCh <-chan struct{}) {
 				result := &proxyv1alpha1.RateLimitAcquireResult{
 					Error: "timeout",
 				}
-				g.flowControl.SetLimit(result)
+				g.flowControl.SetLimit(&AcquireResult{
+					result: result,
+				})
 			}
 		case <-stopCh:
 			return

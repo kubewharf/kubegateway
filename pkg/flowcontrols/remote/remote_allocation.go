@@ -26,6 +26,7 @@ var (
 	requestReasonSuccess                  = "success"
 	requestReasonNoReadyClients           = "no_ready_clients"
 	requestReasonRateLimiterError         = "rate_limiter_error"
+	requestReasonTimeout                  = "timeout"
 	requestReasonSkipped                  = "skipped"
 	requestReasonFlowControlNotFound      = "flowcontrol_not_found"
 	requestReasonGlobalFlowControlDisable = "global_flowcontrol_disable"
