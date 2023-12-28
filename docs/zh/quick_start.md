@@ -35,7 +35,7 @@ kube-gateway \
     --secure-port=9443 \
     --proxy-secure-ports=6443 \
     --authorization-mode AlwaysAllow \
-    --enable-proxy-access-log=true 、
+    --enable-proxy-access-log=true \
     --v=5
 ```
 
