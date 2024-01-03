@@ -169,7 +169,7 @@ func (r *rateLimiter) UpdateRateLimitConditionStatus(upstream string, condition 
 		upstreamUsed := upstreamStatusMap[flowControlConfig.Name]
 		upstreamTotal, ok := upstreamFlowControlMap[flowControlConfig.Name]
 		if !ok {
-			klog.V(3).Infof("[condition] name=%q skip not found flowcontrol ", condition.Name, flowControlConfig.Name)
+			klog.V(3).Infof("[condition] name=%s skip not found flowcontrol %s", condition.Name, flowControlConfig.Name)
 			continue
 		}
 
@@ -584,7 +584,7 @@ func (r *rateLimiter) deleteCondition(limitStore _interface.LimitStore, conditio
 	shardId := util.GetShardID(upstream, r.shardCount)
 	if !r.leaderElector.IsLeader(shardId) || len(condition.Spec.Instance) == 0 {
 		if logForSkip {
-			klog.Errorf("Skip delete condition %s, leader of (upstream %s, shard %v) is %v", upstream, shardId, r.leaderElector.GetLeaders()[shardId])
+			klog.Errorf("Skip delete condition %s, leader of (upstream %s, shard %v) is %v", condition.Name, upstream, shardId, r.leaderElector.GetLeaders()[shardId])
 		}
 		return
 	}
