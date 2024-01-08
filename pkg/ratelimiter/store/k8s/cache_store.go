@@ -3,8 +3,6 @@ package k8s
 import (
 	"context"
 	"fmt"
-	"github.com/kubewharf/kubegateway/pkg/ratelimiter/store/flowcontrol"
-	"github.com/kubewharf/kubegateway/pkg/ratelimiter/util"
 	"sync"
 	"time"
 
@@ -17,8 +15,10 @@ import (
 
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	gatewayclientset "github.com/kubewharf/kubegateway/pkg/client/kubernetes"
+	"github.com/kubewharf/kubegateway/pkg/ratelimiter/store/flowcontrol"
 	"github.com/kubewharf/kubegateway/pkg/ratelimiter/store/interface"
 	"github.com/kubewharf/kubegateway/pkg/ratelimiter/store/local"
+	"github.com/kubewharf/kubegateway/pkg/ratelimiter/util"
 )
 
 func NewK8sCacheStore(gatewayClient gatewayclientset.Interface, syncPeriod time.Duration, shard, shardCount int) _interface.LimitStore {

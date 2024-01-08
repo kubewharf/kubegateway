@@ -2,9 +2,10 @@ package flowcontrol
 
 import (
 	"fmt"
-	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	"sync"
 	"sync/atomic"
+
+	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 )
 
 // newMaxInflightFlowControl creates a max inflight flow control.
@@ -28,7 +29,8 @@ type globalMaxInflight struct {
 }
 
 type instanceState struct {
-	count int32
+	count     int32
+	requestId int64
 }
 
 func (f *globalMaxInflight) Type() proxyv1alpha1.FlowControlSchemaType {
@@ -61,25 +63,37 @@ func (f *globalMaxInflight) add(n int32) int32 {
 	return count - max
 }
 
-func (f *globalMaxInflight) SetState(instance string, current int32) int32 {
+func (f *globalMaxInflight) SetState(instance string, requestId int64, current int32) (int32, error) {
 	f.lock.RLock()
 	state, ok := f.instanceStates[instance]
 	f.lock.RUnlock()
 
 	if current < 0 {
-		if !ok {
+		if ok {
 			f.lock.Lock()
 			delete(f.instanceStates, instance)
 			f.lock.Unlock()
 			current = 0
 		}
-		return f.overflow()
+		return -1, nil
 	} else if !ok || state == nil {
 		f.lock.Lock()
 		state = &instanceState{}
 		f.instanceStates[instance] = state
 		f.lock.Unlock()
 	}
+
+	if requestId > 0 {
+		f.lock.RLock()
+		oldId := atomic.LoadInt64(&state.requestId)
+		if requestId <= oldId {
+			f.lock.RUnlock()
+			return -1, RequestIDTooOld
+		}
+		atomic.StoreInt64(&state.requestId, requestId)
+		f.lock.RUnlock()
+	}
+
 	old := atomic.SwapInt32(&state.count, current)
 	delta := current - old
 	overflowed := f.add(delta)
@@ -87,12 +101,12 @@ func (f *globalMaxInflight) SetState(instance string, current int32) int32 {
 	if overflowed > 0 {
 		atomic.AddInt32(&state.count, -delta)
 		f.add(-delta)
-		return old
+		return old, nil
 	}
-	if overflowed == 0 {
-		return current
+	if overflowed == 0 && current > 0 {
+		return current, nil
 	}
-	return -1
+	return -1, nil
 }
 
 func (f *globalMaxInflight) overflow() int32 {

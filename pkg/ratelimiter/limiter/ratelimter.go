@@ -253,16 +253,22 @@ func (r *rateLimiter) DoAcquire(upstream string, acquireRequest *proxyv1alpha1.R
 				}
 				metrics.MonitorAcquiredTokenCounter(upstream, acquireRequest.Spec.Instance, limit.FlowControl, string(flowControl.Type()), string(proxyv1alpha1.GlobalCountLimit), "acquire", rs.Limit)
 			case proxyv1alpha1.MaxRequestsInflight:
-				threshold := flowControl.SetState(acquireRequest.Spec.Instance, limit.Tokens)
-				if threshold < 0 {
+				threshold, err := flowControl.SetState(acquireRequest.Spec.Instance, acquireRequest.Spec.RequestID, limit.Tokens)
+				switch {
+				case err != nil:
+					rs.Accept = false
+					rs.Error = err.Error()
+				case threshold < 0:
 					rs.Accept = true
 					rs.Limit = limit.Tokens
-				} else {
+				default:
 					rs.Accept = false
 					rs.Limit = threshold
 				}
+
 				metrics.MonitorAllocateRequest(upstream, acquireRequest.Spec.Instance, limit.FlowControl, string(flowControl.Type()), string(proxyv1alpha1.GlobalCountLimit), "acquire", rs.Limit)
 			}
+
 			return rs, nil
 		}()
 
@@ -554,8 +560,11 @@ func (r *rateLimiter) cleanupUnknownCondition() {
 			if expectClients[condition.Spec.Instance] {
 				continue
 			}
-			r.deleteCondition(limitStore, condition, false)
-			clientsToDelete[condition.Spec.Instance] = true
+
+			if len(condition.Spec.Instance) > 0 {
+				r.deleteCondition(limitStore, condition, false)
+				clientsToDelete[condition.Spec.Instance] = true
+			}
 
 			if !expectUpstreams[condition.Spec.UpstreamCluster] {
 				upstreamsToDelete[condition.Spec.UpstreamCluster] = true

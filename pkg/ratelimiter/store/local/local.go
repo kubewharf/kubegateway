@@ -130,7 +130,7 @@ func (s *localStore) DeleteInstanceState(instance string) {
 	s.clusters.Range(func(key, value interface{}) bool {
 		value.(*upstreamCondition).flowControls.Range(func(key, value interface{}) bool {
 			fc := value.(flowcontrol.GlobalFlowControl)
-			fc.SetState(instance, -1)
+			fc.SetState(instance, -1, -1)
 			return true
 		})
 		return true

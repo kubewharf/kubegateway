@@ -1,13 +1,18 @@
 package flowcontrol
 
 import (
+	"errors"
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	"k8s.io/klog"
 )
 
+var (
+	RequestIDTooOld = errors.New("RequestIDTooOld")
+)
+
 type GlobalFlowControl interface {
 	TryAcquireN(instance string, token int32) bool
-	SetState(instance string, current int32) int32
+	SetState(instance string, requestId int64, current int32) (int32, error)
 	String() string
 	Resize(n int32, burst int32) bool
 	Type() proxyv1alpha1.FlowControlSchemaType

@@ -20,12 +20,3 @@ type LimitStore interface {
 	Flush() error
 	Stop() error
 }
-
-type ClusterCondition interface {
-	Get(name string) (*v1alpha1.RateLimitCondition, error)
-	Save(condition *v1alpha1.RateLimitCondition) error
-	Delete(string) error
-	List(selector labels.Selector) []*v1alpha1.RateLimitCondition
-	GetFlowControl(name string) flowcontrol.GlobalFlowControl
-	SyncFlowControl(v1alpha1.FlowControl)
-}

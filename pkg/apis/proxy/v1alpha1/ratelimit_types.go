@@ -117,6 +117,8 @@ type RateLimitAcquireSpec struct {
 	Instance string `json:"instance,omitempty" protobuf:"bytes,1,opt,name=instance"`
 	// Limit tokens requested
 	Requests []RateLimitAcquireRequest `json:"requests,omitempty" protobuf:"bytes,2,opt,name=requests"`
+	// Request id
+	RequestID int64 `json:"requestID,omitempty" protobuf:"bytes,3,opt,name=requestID"`
 }
 
 type RateLimitAcquireRequest struct {

@@ -100,3 +100,12 @@ func (c *upstreamCondition) storeCondition(condition *proxyv1alpha1.RateLimitCon
 func (c *upstreamCondition) deleteCondition(name string) {
 	c.conditions.Delete(name)
 }
+
+//type flowControlInfo struct {
+//	flowcontrol.GlobalFlowControl
+//	sync.Mutex
+//}
+//
+//func (f *flowControlInfo) GetLocker() sync.Locker {
+//	return &f.Mutex
+//}

@@ -53,6 +53,7 @@ type globalCounterManager struct {
 	counterMap   map[string]*globalCounter
 	workerStopCh chan struct{}
 	clientID     string
+	acquireLock  sync.Mutex
 }
 
 func (g *globalCounterManager) Get(name string) GlobalCounter {
@@ -156,71 +157,85 @@ func (g *globalCounterManager) limitWorker(stopCh <-chan struct{}) {
 }
 
 func (g *globalCounterManager) doAcquire() {
+	g.acquireLock.Lock()
+	defer g.acquireLock.Unlock()
+
 	result := "unknown"
+	interrupted := false
+
 	start := time.Now()
 	defer func() {
-		metrics.RecordRateLimiterRequest(g.cluster, "acquire", result, "all", time.Since(start))
+		if interrupted {
+			metrics.RecordRateLimiterRequest(g.cluster, "acquire", result, "all", time.Since(start))
+		}
 	}()
 
 	client, err := g.clientSets.ClientFor(g.cluster)
 	if err != nil {
 		klog.Errorf("Get limiter server client for cluster %s error: %v", g.cluster, err)
 		result = requestReasonNoReadyClients
-		return
-	}
-
-	acquireRequest, limitRequestsMap := g.acquireRequest()
-	if acquireRequest == nil || len(acquireRequest.Spec.Requests) == 0 {
-		result = requestReasonSkipped
+		interrupted = true
 		return
 	}
 
 	requestTime := time.Now().UnixNano()
-	ctx, cancel := context.WithTimeout(context.TODO(), LimitRequestTimeout)
-	defer cancel()
-
-	acquireResult, err := client.ProxyV1alpha1().RateLimitConditions().Acquire(ctx, g.cluster, acquireRequest, metav1.CreateOptions{})
-	if err != nil {
-		klog.Errorf("Do acquire request error: %v", err)
-		result = requestReasonRateLimiterError
-		if os.IsTimeout(err) {
-			result = requestReasonTimeout
-		}
-
-		acquireResult = &proxyv1alpha1.RateLimitAcquire{}
-		for _, r := range acquireRequest.Spec.Requests {
-			acquireResult.Status.Results = append(acquireResult.Status.Results, proxyv1alpha1.RateLimitAcquireResult{
-				FlowControl: r.FlowControl,
-				Accept:      false,
-				Error:       err.Error(),
-			})
-		}
+	acquireRequest, limitRequestsMap := g.acquireRequest(requestTime)
+	if acquireRequest == nil || len(acquireRequest.Spec.Requests) == 0 {
+		result = requestReasonSkipped
+		interrupted = true
+		return
 	}
+	acquireRequest.Spec.RequestID = requestTime
 
-	for _, r := range acquireResult.Status.Results {
-		rs := r
-		if counter := g.counterMap[r.FlowControl]; counter != nil {
-			acceptInfo := &AcquireResult{
-				request:     limitRequestsMap[r.FlowControl],
-				result:      &rs,
-				requestTime: requestTime,
+	go func() {
+		defer func() {
+			metrics.RecordRateLimiterRequest(g.cluster, "acquire", result, "all", time.Since(start))
+		}()
+
+		ctx, cancel := context.WithTimeout(context.TODO(), LimitRequestTimeout)
+		defer cancel()
+
+		acquireResult, err := client.ProxyV1alpha1().RateLimitConditions().Acquire(ctx, g.cluster, acquireRequest, metav1.CreateOptions{})
+		if err != nil {
+			klog.Errorf("Do acquire request error: %v", err)
+			result = requestReasonRateLimiterError
+			if os.IsTimeout(err) {
+				result = requestReasonTimeout
 			}
-			counter.send(acceptInfo)
+
+			acquireResult = &proxyv1alpha1.RateLimitAcquire{}
+			for _, r := range acquireRequest.Spec.Requests {
+				acquireResult.Status.Results = append(acquireResult.Status.Results, proxyv1alpha1.RateLimitAcquireResult{
+					FlowControl: r.FlowControl,
+					Accept:      false,
+					Error:       err.Error(),
+				})
+			}
+		} else {
+			result = requestReasonSuccess
 		}
 
-		reason := requestReasonSuccess
-		if len(rs.Error) > 0 {
-			reason = requestReasonRateLimiterError
-		}
-		metrics.RecordRateLimiterRequest(g.cluster, "acquire", reason, rs.FlowControl, -1)
-	}
+		for _, r := range acquireResult.Status.Results {
+			rs := r
+			if counter := g.counterMap[r.FlowControl]; counter != nil {
+				acceptInfo := &AcquireResult{
+					request:     limitRequestsMap[rs.FlowControl],
+					result:      &rs,
+					requestTime: requestTime,
+				}
+				counter.send(acceptInfo)
+			}
 
-	if len(result) == 0 {
-		result = requestReasonSuccess
-	}
+			reason := requestReasonSuccess
+			if len(rs.Error) > 0 {
+				reason = requestReasonRateLimiterError
+			}
+			metrics.RecordRateLimiterRequest(g.cluster, "acquire", reason, rs.FlowControl, -1)
+		}
+	}()
 }
 
-func (g *globalCounterManager) acquireRequest() (*proxyv1alpha1.RateLimitAcquire, map[string]*proxyv1alpha1.RateLimitAcquireRequest) {
+func (g *globalCounterManager) acquireRequest(requestTime int64) (*proxyv1alpha1.RateLimitAcquire, map[string]*proxyv1alpha1.RateLimitAcquireRequest) {
 	counterHasEvent := map[string]*globalCounter{}
 	counterResync := map[string]bool{}
 	unixNow := time.Now().Unix()
@@ -259,7 +274,7 @@ func (g *globalCounterManager) acquireRequest() (*proxyv1alpha1.RateLimitAcquire
 			if hits <= 0 && !counterResync[name] {
 				continue
 			}
-
+			c.flowControl.AddAcquiring(hits)
 			req.Tokens = hits
 		case proxyv1alpha1.MaxRequestsInflight:
 			inflight := c.flowControl.ExpectToken()
@@ -309,7 +324,7 @@ func (g *globalCounter) stop() {
 }
 
 func (g *globalCounter) send(response *AcquireResult) {
-	if len(response.result.Error) != 0 {
+	if len(response.result.Error) != 0 && response.result.Error != "RequestIDTooOld" {
 		klog.Warningf("[global counter] cluster=%q flowcontrol=%q global count response err: %v",
 			g.manager.cluster, g.name, response.result.Error)
 	}
