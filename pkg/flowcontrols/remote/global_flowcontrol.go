@@ -10,6 +10,7 @@ import (
 
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	"github.com/kubewharf/kubegateway/pkg/flowcontrols/flowcontrol"
+	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 )
 
 var (
@@ -237,6 +238,12 @@ func (m *maxInflightWrapper) Resize(max uint32, burst uint32) bool {
 }
 
 func (m *maxInflightWrapper) TryAcquire() bool {
+	method := "async"
+	start := time.Now()
+	defer func() {
+		metrics.RecordGlobalFlowControlAcquire(m.fcc.cluster, "MaxInflight", method, m.fcc.name, time.Since(start))
+	}()
+
 	waitInflight := atomic.LoadInt32(&m.waitInflight) + 1
 
 	if m.counter == nil || atomic.LoadUint32(&m.serverUnavailable) == 1 {
@@ -264,6 +271,7 @@ func (m *maxInflightWrapper) TryAcquire() bool {
 		waitAcquire(m.cond, requestTime, &m.lastAcquireTime)
 		acquire = m.FlowControl.TryAcquire()
 		atomic.AddInt32(&m.waitInflight, -1)
+		method = "sync"
 	}
 
 	if m.counter != nil {
@@ -420,6 +428,12 @@ func (m *tokenBucketWrapper) Resize(qps uint32, burst uint32) bool {
 }
 
 func (m *tokenBucketWrapper) TryAcquire() bool {
+	method := "async"
+	start := time.Now()
+	defer func() {
+		metrics.RecordGlobalFlowControlAcquire(m.fcc.cluster, "TokenBucket", method, m.fcc.name, time.Since(start))
+	}()
+
 	acquire := m.FlowControl.TryAcquire()
 
 	if !acquire || atomic.LoadUint32(&m.serverUnavailable) == 1 {
@@ -441,6 +455,7 @@ func (m *tokenBucketWrapper) TryAcquire() bool {
 		m.counter(0)
 		waitAcquire(m.cond, requestTime, &m.lastAcquireTime)
 		acquire = tryAcquire()
+		method = "sync"
 	}
 
 	if m.counter != nil {

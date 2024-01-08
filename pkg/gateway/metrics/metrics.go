@@ -270,3 +270,13 @@ func RecordRateLimiterRequest(serverName string, method string, result string, f
 		Latency:     elapsed.Seconds(),
 	})
 }
+
+func RecordGlobalFlowControlAcquire(serverName string, flowControlType string, limitMethod string, flowControl string, elapsed time.Duration) {
+	ProxyGlobalFlowControlAcquireObservers.Observe(MetricInfo{
+		ServerName:  serverName,
+		Type:        flowControlType,
+		LimitMethod: limitMethod,
+		FlowControl: flowControl,
+		Latency:     elapsed.Seconds(),
+	})
+}

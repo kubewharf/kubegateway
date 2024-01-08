@@ -122,6 +122,17 @@ var (
 		[]string{"pid", "serverName", "method", "result", "flowcontrol"},
 	)
 
+	proxyGlobalFlowControlRequestCounter = compbasemetrics.NewCounterVec(
+		&compbasemetrics.CounterOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "global_flowcontrol_acquire_total",
+			Help:           "Counter of global flowcontrol request, it is recorded when request ends",
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"pid", "serverName", "type", "limitMethod", "flowcontrol"},
+	)
+
 	localMetrics = []compbasemetrics.Registerable{
 		proxyReceiveRequestCounter,
 		proxyRequestCounter,
@@ -131,6 +142,7 @@ var (
 		proxyRequestTerminationsTotal,
 		proxyRegisteredWatchers,
 		proxyRateLimiterRequestCounter,
+		proxyGlobalFlowControlRequestCounter,
 	}
 )
 
@@ -156,6 +168,7 @@ func Register() {
 		ProxyWatcherRegisteredObservers.AddObserver(&proxyWatcherRegisteredObserver{})
 		ProxyWatcherUnregisteredObservers.AddObserver(&proxyWatcherUnregisteredObserver{})
 		ProxyRateLimiterRequestCounterObservers.AddObserver(&proxyRateLimiterRequestCounterObserver{})
+		ProxyGlobalFlowControlAcquireObservers.AddObserver(&proxyGlobalFlowControlAcquireObserver{})
 	})
 }
 
@@ -211,4 +224,10 @@ type proxyRateLimiterRequestCounterObserver struct{}
 
 func (o *proxyRateLimiterRequestCounterObserver) Observe(metric MetricInfo) {
 	proxyRateLimiterRequestCounter.WithLabelValues(proxyPid, metric.ServerName, metric.Method, metric.Result, metric.FlowControl).Inc()
+}
+
+type proxyGlobalFlowControlAcquireObserver struct{}
+
+func (o *proxyGlobalFlowControlAcquireObserver) Observe(metric MetricInfo) {
+	proxyGlobalFlowControlRequestCounter.WithLabelValues(proxyPid, metric.ServerName, metric.Type, metric.LimitMethod, metric.FlowControl).Inc()
 }
