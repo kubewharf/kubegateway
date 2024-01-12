@@ -57,12 +57,31 @@ func calculateNextQuota(
 	expectTotalLevel := upstreamUsed.RequestLevel*95/100 + 5
 
 	// linear mapping from total request level to allocation percent
-	// allocate 50% when RequestLevel is 0, allocate 100% when RequestLevel is 100
-	expectedAllocatePercent := upstreamUsed.RequestLevel/2 + 50
+	// allocation ratio increases linearly with RequestLevel，allocate minPercent % when RequestLevel is 0, allocate 100% when RequestLevel is 100
+	minPercent := int32(70 - total/100)
+	if minPercent < 60 {
+		minPercent = 60
+	}
+	expectedAllocatePercent := upstreamUsed.RequestLevel*(100-minPercent)/100 + minPercent
 
+	// targetLevel is expected utilization of single client
 	targetLevel := expectTotalLevel * 100 / expectedAllocatePercent
-	reducingThreshold = targetLevel - 5
-	increasingThreshold = targetLevel + 5
+
+	// there is max 10% compensation to targetLevel for different client
+	// if all clients are approaching to the same utilization, there will be less available quota for the client with less used quota,
+	// the ability to handle bursts is worse. so the targetLevel is higher for smaller used quota
+	targetLevel = targetLevel + int32(math.Sqrt(used*100/total))
+	if targetLevel > 100 {
+		targetLevel = 100
+	}
+
+	reducingThreshold = targetLevel
+	increasingThreshold = targetLevel
+	if targetLevel > 50 {
+		reducingThreshold = targetLevel - 5
+	} else {
+		increasingThreshold = targetLevel + 5
+	}
 
 	next = current
 
@@ -80,14 +99,14 @@ func calculateNextQuota(
 		upper := total * ExpectUtilizationPercent / float64(clientCount)
 		upper = math.Round(upper)
 
-		if allocatedPercent < float64(expectedAllocatePercent)-2 {
+		if allocatedPercent < float64(expectedAllocatePercent)-5 {
 			next = current + remaining*IncreasePercent
 			if next > upper {
 				next = upper
 			}
-		} else if allocatedPercent > float64(expectedAllocatePercent)+2 || current > upper {
+		} else if allocatedPercent >= float64(expectedAllocatePercent) || current > upper {
 			reduce := current * ReducePercent
-			minReduce := total / 100
+			minReduce := total / 50
 			if reduce > 0 && reduce < minReduce {
 				reduce = minReduce
 			}
@@ -108,7 +127,7 @@ func calculateNextQuota(
 			reduce = 1
 		}
 		next = current - reduce
-	case flowControlStatus.RequestLevel > increasingThreshold:
+	case flowControlStatus.RequestLevel >= increasingThreshold:
 		// if request ratio more than increasingThreshold, get more quota
 		delta := current * IncreasePercent
 		if flowControlStatus.RequestLevel > 100 {
@@ -141,8 +160,9 @@ func calculateNextQuota(
 	}
 	burst = math.Ceil(burst)
 
-	klog.V(2).Infof("[allocate] fc=%s, total=%v, allocated=%v, totalReq=%v%%, last=%v, used=%v (%v%%), next=%v, threshold=(%v, %v), name=%s",
-		flowControlConfig.Name, total, allocated, upstreamUsed.RequestLevel, current, used, flowControlStatus.RequestLevel, next, reducingThreshold, increasingThreshold, condition.Name)
+	klog.V(2).Infof("[allocate] fc=%s, total=%v, allocated=%v, totalReq=%v%%, last=%v, used=%v (%v%%), next=%v, threshold=(%v, %v), level(expect: %v, allocate: %v), name=%s",
+		flowControlConfig.Name, total, allocated, upstreamUsed.RequestLevel, current, used, flowControlStatus.RequestLevel, next,
+		reducingThreshold, increasingThreshold, expectTotalLevel, expectedAllocatePercent, condition.Name)
 
 	setFlowControlLimit(&newCondition.LimitItemDetail, flowControlType, next, burst)
 

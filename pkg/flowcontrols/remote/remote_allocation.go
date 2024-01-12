@@ -2,7 +2,7 @@ package remote
 
 import (
 	"context"
-	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
+	"math"
 	"sync"
 	"time"
 
@@ -12,6 +12,7 @@ import (
 
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	"github.com/kubewharf/kubegateway/pkg/flowcontrols/flowcontrol"
+	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 	"github.com/kubewharf/kubegateway/pkg/ratelimiter/clientsets"
 	"github.com/kubewharf/kubegateway/pkg/ratelimiter/util"
 )
@@ -279,8 +280,8 @@ func getRateLimitItemStatus(name string, flowControlCache FlowControlCache) prox
 	case proxyv1alpha1.TokenBucket:
 		rate := flowControlCache.Rate()
 		status.LimitItemDetail.TokenBucket = &proxyv1alpha1.TokenBucketFlowControlSchema{
-			QPS:   int32(rate),
-			Burst: int32(rate),
+			QPS:   int32(math.Round(rate)),
+			Burst: int32(math.Round(rate)),
 		}
 		// TODO
 		if remoteFlowControl := flowControlCache.FlowControl(); remoteFlowControl != nil {
