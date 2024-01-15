@@ -273,7 +273,7 @@ func getRateLimitItemStatus(name string, flowControlCache FlowControlCache) prox
 	case proxyv1alpha1.MaxRequestsInflight:
 		inflight := flowControlCache.Inflight()
 		status.LimitItemDetail.MaxRequestsInflight = &proxyv1alpha1.MaxRequestsInflightFlowControlSchema{
-			Max: inflight,
+			Max: int32(math.Round(inflight)),
 		}
 		if remoteFlowControl := flowControlCache.FlowControl(); remoteFlowControl != nil {
 			status.RequestLevel = int32(float64(inflight) / float64(flowControlCache.FlowControl().Config().MaxRequestsInflight.Max) * 100)

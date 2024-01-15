@@ -127,7 +127,7 @@ type maxInflightWrapper struct {
 }
 
 func (m *maxInflightWrapper) ExpectToken() int32 {
-	inflight := atomic.LoadInt32(&m.meter.inflight)
+	inflight := m.meter.currentInflight()
 
 	acquire := int32(0)
 	overLimited := atomic.LoadInt32(&m.overLimited)
@@ -178,7 +178,7 @@ func (m *maxInflightWrapper) SetLimit(acquireResult *AcquireResult) bool {
 
 		m.lock.Lock()
 		if atomic.LoadUint32(&m.serverUnavailable) == 0 {
-			inflight := atomic.LoadInt32(&m.meter.inflight)
+			inflight := m.meter.maxInflight()
 			localMax := m.fcc.local.localConfig.MaxRequestsInflight.Max
 			if inflight < localMax {
 				inflight = localMax
