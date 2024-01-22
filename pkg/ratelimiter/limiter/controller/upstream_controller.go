@@ -15,10 +15,10 @@
 package controller
 
 import (
-	"k8s.io/apimachinery/pkg/api/errors"
 	"sync"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
 
@@ -28,6 +28,10 @@ import (
 	scheme "github.com/kubewharf/kubegateway/pkg/client/kubernetes/scheme"
 	proxylisters "github.com/kubewharf/kubegateway/pkg/client/listers/proxy/v1alpha1"
 	"github.com/kubewharf/kubegateway/pkg/syncqueue"
+)
+
+const (
+	HandlerResyncPeriod = time.Minute * 10
 )
 
 type UpstreamController interface {
@@ -48,7 +52,7 @@ type upstreamController struct {
 }
 
 func NewUpstreamController(gatewayClient gatewayclientset.Interface, handlers ...UpstreamClusterHandler) UpstreamController {
-	gatewayInformerFactory := gatewayinformers.NewSharedInformerFactory(gatewayClient, 0)
+	gatewayInformerFactory := gatewayinformers.NewSharedInformerFactory(gatewayClient, HandlerResyncPeriod)
 	upstreamClusterInformer := gatewayInformerFactory.Proxy().V1alpha1().UpstreamClusters()
 	m := &upstreamController{
 		handlers:               handlers,

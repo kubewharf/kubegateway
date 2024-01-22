@@ -126,6 +126,10 @@ func (r *rateLimiter) UpdateRateLimitConditionStatus(upstream string, condition 
 		return nil, fmt.Errorf("limit store for upstream %s upstream shard %v not found", upstream, shardId)
 	}
 
+	mutex := r.upstreamLock[condition.Spec.UpstreamCluster]
+	mutex.Lock()
+	defer mutex.Unlock()
+
 	upstreamCondition, err := limitStore.Get(condition.Spec.UpstreamCluster, upstreamStateConditionName(condition.Spec.UpstreamCluster))
 	if err != nil {
 		return nil, err
@@ -149,10 +153,6 @@ func (r *rateLimiter) UpdateRateLimitConditionStatus(upstream string, condition 
 		condition.Labels = map[string]string{}
 	}
 	condition.Labels["proxy.kubegateway.io/ratelimitcondition.instance"] = oldCondition.Spec.Instance
-
-	mutex := r.upstreamLock[condition.Spec.UpstreamCluster]
-	mutex.Lock()
-	defer mutex.Unlock()
 
 	clients, err := r.clientCache.AllClients()
 	if err != nil {
@@ -355,6 +355,9 @@ func (r *rateLimiter) UpstreamConditionHandler(cluster *proxyv1alpha1.UpstreamCl
 	if _, ok := r.upstreamLock[cluster.Name]; !ok {
 		r.upstreamLock[cluster.Name] = &sync.Mutex{}
 	}
+	mutex := r.upstreamLock[cluster.Name]
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	upstreamCondition, err := limitStore.Get(cluster.Name, upstreamStateConditionName(cluster.Name))
 	if err != nil && !errors.IsNotFound(err) {
@@ -461,6 +464,7 @@ func (r *rateLimiter) startLeading(shardId int) {
 				delete(r.limitStoreMap, shardId)
 			}
 			r.limitStoreLock.Unlock()
+			stopLimitStoreWithRetry(limitStore, shardId)
 		}
 	}
 }
@@ -491,11 +495,7 @@ func (r *rateLimiter) stopLeading(shardId int) {
 	r.limitStoreLock.Unlock()
 
 	if limitStore != nil {
-		err := limitStore.Stop()
-		if err != nil {
-			// TODO retry
-			klog.Errorf("Stop and flush limit store for shard %v error: %v", shardId, err)
-		}
+		stopLimitStoreWithRetry(limitStore, shardId)
 	}
 }
 
@@ -687,7 +687,10 @@ func (r *rateLimiter) calculateUpstreamCondition(limitStore _interface.LimitStor
 		for _, status := range condition.Status.LimitItemStatuses {
 			level, _ := requestLevelMap[status.Name]
 
-			flowControlConfig := upstreamFlowControlMap[status.Name]
+			flowControlConfig, ok := upstreamFlowControlMap[status.Name]
+			if !ok {
+				continue
+			}
 			switch {
 			case status.MaxRequestsInflight != nil:
 				level += float64(status.MaxRequestsInflight.Max) / float64(flowControlConfig.MaxRequestsInflight.Max)
@@ -776,4 +779,17 @@ func toFlowControlLimit(schema proxyv1alpha1.FlowControlSchema) proxyv1alpha1.Li
 
 func upstreamStateConditionName(cluster string) string {
 	return fmt.Sprintf("%s.state", cluster)
+}
+
+const stopLimitStoreRetryInterval = time.Second * 2
+
+func stopLimitStoreWithRetry(limitStore _interface.LimitStore, shardId int) {
+	for i := 0; i < 10; i++ {
+		err := limitStore.Stop()
+		if err == nil {
+			break
+		}
+		klog.Errorf("Stop and flush limit store for shard %v error: %v, retry after %v", shardId, err, stopLimitStoreRetryInterval)
+		time.Sleep(stopLimitStoreRetryInterval)
+	}
 }

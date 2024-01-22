@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -25,6 +26,7 @@ func NewK8sCacheStore(gatewayClient gatewayclientset.Interface, syncPeriod time.
 	localStore := local.NewLocalStore()
 
 	store := &objectStore{
+		id:            rand.Intn(10000),
 		shard:         shard,
 		shardCount:    shardCount,
 		stopCh:        make(chan struct{}),
@@ -41,9 +43,11 @@ func NewK8sCacheStore(gatewayClient gatewayclientset.Interface, syncPeriod time.
 
 type objectStore struct {
 	sync.Mutex
+	id            int
 	shard         int
 	shardCount    int
 	stopCh        chan struct{}
+	stopped       bool
 	syncPeriod    time.Duration
 	localStore    _interface.LimitStore
 	gatewayClient gatewayclientset.Interface
@@ -123,7 +127,7 @@ func (s *objectStore) Load() error {
 			continue
 		}
 
-		klog.V(2).Infof("Load condition %v for shard %v", newItem.Name, s.shard)
+		klog.V(2).Infof("Load condition %v to store [%s]", newItem.Name, s.string())
 		_ = s.localStore.Save(item.Spec.UpstreamCluster, newItem)
 	}
 	return nil
@@ -146,12 +150,27 @@ func (s *objectStore) Flush() error {
 }
 
 func (s *objectStore) Stop() error {
+	if s.stopped {
+		return nil
+	}
 	err := s.doSyncLocked()
 	if err != nil {
 		return err
 	}
-	close(s.stopCh)
-	return s.localStore.Stop()
+
+	select {
+	case <-s.stopCh:
+	default:
+		close(s.stopCh)
+	}
+
+	err = s.localStore.Stop()
+	if err == nil {
+		s.stopped = true
+	}
+
+	klog.V(0).Infof("Store [%s] stopped: %v", s.string(), err)
+	return err
 }
 
 func (s *objectStore) createOrUpdate(condition *proxyv1alpha1.RateLimitCondition) (*proxyv1alpha1.RateLimitCondition, error) {
@@ -183,12 +202,12 @@ func (s *objectStore) createOrUpdate(condition *proxyv1alpha1.RateLimitCondition
 func (s *objectStore) sync() {
 	err := s.doSyncLocked()
 	if err != nil {
-		klog.Errorf("Sync store error: %v", err)
+		klog.Errorf("Sync store [%s] error: %v", s.string(), err)
 	}
 }
 
 func (s *objectStore) doSyncLocked() error {
-	klog.V(2).Infof("Sync local data to k8s for shard %v", s.shard)
+	klog.V(2).Infof("Sync store [%s] local data to k8s", s.string())
 
 	s.Lock()
 	defer s.Unlock()
@@ -205,4 +224,8 @@ func (s *objectStore) doSyncLocked() error {
 		}
 	}
 	return nil
+}
+
+func (s *objectStore) string() string {
+	return fmt.Sprintf("shard=%v id=%v", s.shard, s.id)
 }
