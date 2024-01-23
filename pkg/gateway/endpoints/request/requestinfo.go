@@ -58,13 +58,13 @@ type ExtraRequestInfo struct {
 	Impersonator         user.Info
 }
 
-// WithExtraReqeustInfo returns a copy of parent in which the ExtraRequestInfo value is set
-func WithExtraReqeustInfo(parent context.Context, info *ExtraRequestInfo) context.Context {
+// WithExtraRequestInfo returns a copy of parent in which the ExtraRequestInfo value is set
+func WithExtraRequestInfo(parent context.Context, info *ExtraRequestInfo) context.Context {
 	return context.WithValue(parent, requestInfoKey, info)
 }
 
-// ExtraReqeustInfoFrom returns the value of the ExtraRequestInfo key on the ctx
-func ExtraReqeustInfoFrom(ctx context.Context) (*ExtraRequestInfo, bool) {
+// ExtraRequestInfoFrom returns the value of the ExtraRequestInfo key on the ctx
+func ExtraRequestInfoFrom(ctx context.Context) (*ExtraRequestInfo, bool) {
 	info, ok := ctx.Value(requestInfoKey).(*ExtraRequestInfo)
 	return info, ok
 }

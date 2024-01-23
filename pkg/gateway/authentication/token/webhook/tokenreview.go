@@ -48,7 +48,7 @@ func NewMultiClusterTokenReviewAuthenticator(clientProvider clusters.ClientProvi
 }
 
 func (a *multiClusterTokenReviewAuthenticator) AuthenticateToken(ctx context.Context, token string) (*authenticator.Response, bool, error) {
-	info, ok := request.ExtraReqeustInfoFrom(ctx)
+	info, ok := request.ExtraRequestInfoFrom(ctx)
 	if !ok {
 		return nil, false, fmt.Errorf("failed to get extra request info from context")
 	}

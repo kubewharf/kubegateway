@@ -65,7 +65,7 @@ func NewMultiClusterSubjectAccessReviewAuthorizer(clientProvider clusters.Client
 }
 
 func (a *MultiClusterSubjectAccessReviewAuthorizer) Authorize(ctx context.Context, attr authorizer.Attributes) (authorized authorizer.Decision, reason string, err error) {
-	info, ok := request.ExtraReqeustInfoFrom(ctx)
+	info, ok := request.ExtraRequestInfoFrom(ctx)
 	if !ok {
 		return a.decisionOnError, "", fmt.Errorf("failed to get request host from context")
 	}
