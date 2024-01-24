@@ -1,24 +1,21 @@
 package remote
 
 import (
-	"math"
+	"fmt"
 	"reflect"
 	"strings"
-	"sync"
-	"sync/atomic"
 	"time"
 
-	"k8s.io/apimachinery/pkg/util/clock"
 	"k8s.io/klog"
 
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	"github.com/kubewharf/kubegateway/pkg/flowcontrols/flowcontrol"
+	"github.com/kubewharf/kubegateway/pkg/flowcontrols/util"
 )
 
 const (
-	FlowControlMeterWindow = time.Second * 3
-	QPSMeterTickDuration   = time.Second
-	QPSMeterBucketLen      = 3
+	QPSMeterTickDuration = time.Second
+	QPSMeterBucketLen    = 3
 
 	InflightMeterBucketLen      = 6
 	InflightMeterBucketDuration = time.Millisecond * 200
@@ -49,36 +46,22 @@ type RemoteFlowControlWrapper interface {
 }
 
 func NewFlowControlCache(cluster, name, clientID string, globalCounterProvider GlobalCounterProvider) FlowControlCache {
-	tickDuration := QPSMeterTickDuration
-	buckets := make([]float64, QPSMeterBucketLen)
-
-	stopCh := make(chan struct{})
-
 	clientIdSlices := strings.Split(clientID, "-")
 	id := clientIdSlices[len(clientIdSlices)-1]
 
+	meter := util.NewMeter(fmt.Sprintf("%s/%s", cluster, name), QPSMeterBucketLen, QPSMeterTickDuration, InflightMeterBucketLen, InflightMeterBucketDuration)
+
 	f := &flowControlCache{
-		cluster: cluster,
-		name:    name,
-		meter: &meter{
-			cluster:         cluster,
-			name:            name,
-			stopCh:          stopCh,
-			clock:           clock.RealClock{},
-			ticker:          time.NewTicker(tickDuration),
-			last:            time.Now(),
-			mu:              sync.Mutex{},
-			counterBuckets:  buckets,
-			inflightBuckets: make([]int32, InflightMeterBucketLen),
-			inflightChan:    make(chan int32, 1),
-		},
+		cluster:       cluster,
+		name:          name,
+		meter:         meter,
 		globalCounter: globalCounterProvider,
 		clientID:      id,
 	}
 
 	f.local = &localWrapper{flowControlCache: f}
 
-	f.meter.start()
+	f.meter.Start()
 
 	return f
 }
@@ -90,7 +73,7 @@ type flowControlCache struct {
 	name    string
 
 	globalCounter GlobalCounterProvider
-	meter         *meter
+	meter         *util.Meter
 
 	clientID string
 }
@@ -122,19 +105,19 @@ func (f *flowControlCache) Strategy() proxyv1alpha1.LimitStrategy {
 }
 
 func (f *flowControlCache) Rate() float64 {
-	return f.meter.rate()
+	return f.meter.Rate()
 }
 
 func (f *flowControlCache) Inflight() float64 {
-	return f.meter.avgInflight()
+	return f.meter.AvgInflight()
 }
 
 func (f *flowControlCache) MaxInflight() int32 {
-	return f.meter.maxInflight()
+	return f.meter.MaxInflight()
 }
 
 func (f *flowControlCache) Stop() {
-	close(f.meter.stopCh)
+	f.meter.Stop()
 	if f.remote != nil {
 		close(f.remote.stopCh)
 	}
@@ -293,195 +276,20 @@ func (f *remoteWrapper) Done() <-chan struct{} {
 
 type meterWrapper struct {
 	flowcontrol.FlowControl
-	meter *meter
+	meter *util.Meter
 }
 
 func (f *meterWrapper) TryAcquire() bool {
 	acquire := f.FlowControl.TryAcquire()
 	if acquire {
-		f.meter.addInflight(1)
-		f.meter.add(1)
+		f.meter.StartOne()
 	}
 	return acquire
 }
 
 func (f *meterWrapper) Release() {
-	f.meter.addInflight(-1)
+	f.meter.EndOne()
 	f.FlowControl.Release()
-}
-
-type meter struct {
-	cluster string
-	name    string
-
-	stopCh chan struct{}
-	clock  clock.Clock
-	ticker *time.Ticker
-	mu     sync.Mutex
-
-	uncounted      int64
-	currentIndex   int
-	rateAvg        float64
-	last           time.Time
-	counterBuckets []float64
-
-	inflight        int32
-	inflightIndex   int
-	inflightAvg     float64
-	inflightMax     int32
-	inflightBuckets []int32
-	inflightChan    chan int32
-
-	debug bool
-}
-
-func (m *meter) start() {
-	go m.rateTick()
-	go m.inflightWorker()
-}
-
-func (m *meter) addInflight(add int32) {
-	inflight := atomic.AddInt32(&m.inflight, add)
-
-	select {
-	case m.inflightChan <- inflight:
-	default:
-	}
-}
-
-func (m *meter) add(add int64) {
-	atomic.AddInt64(&m.uncounted, add)
-}
-
-func (m *meter) rateTick() {
-	defer m.ticker.Stop()
-	for {
-		select {
-		case <-m.ticker.C:
-			m.calculateAvgRate()
-		case <-m.stopCh:
-			return
-		}
-	}
-}
-
-func (m *meter) calculateAvgRate() {
-	latestRate := m.latestRate()
-
-	m.mu.Lock()
-	lastRate := m.counterBuckets[m.currentIndex]
-	if lastRate == math.NaN() {
-		lastRate = 0
-	}
-
-	rateAvg := m.rateAvg + (latestRate-lastRate)/float64(len(m.counterBuckets))
-	m.rateAvg = rateAvg
-	m.counterBuckets[m.currentIndex] = latestRate
-	m.currentIndex = (m.currentIndex + 1) % len(m.counterBuckets)
-	m.mu.Unlock()
-
-	klog.V(6).Infof("FlowControl %s/%s tick: latestRate %v, rateAvg %v, currentIndex %v, counterBuckets %v",
-		m.cluster, m.name, latestRate, m.rateAvg, m.currentIndex, m.counterBuckets)
-}
-
-func (m *meter) latestRate() float64 {
-	count := atomic.LoadInt64(&m.uncounted)
-	atomic.AddInt64(&m.uncounted, -count)
-	m.mu.Lock()
-	last := m.last
-	now := m.clock.Now()
-	timeWindow := float64(now.Sub(last)) / float64(time.Second)
-	instantRate := float64(count) / timeWindow
-	m.last = now
-	m.mu.Unlock()
-
-	klog.V(6).Infof("FlowControl %s/%s latestRate: count %v, timeWindow %v, rate %v",
-		m.cluster, m.name, count, timeWindow, instantRate)
-
-	return instantRate
-}
-
-func (m *meter) rate() float64 {
-	return m.rateAvg
-}
-
-func (m *meter) avgInflight() float64 {
-	return m.inflightAvg
-}
-
-func (m *meter) maxInflight() int32 {
-	return m.inflightMax
-}
-
-func (m *meter) currentInflight() int32 {
-	return atomic.LoadInt32(&m.inflight)
-}
-
-func (m *meter) inflightWorker() {
-	timerDuration := InflightMeterBucketDuration * 2
-
-	timer := m.clock.NewTimer(timerDuration)
-	defer timer.Stop()
-
-	for {
-		select {
-		case inflight := <-m.inflightChan:
-			m.calInflight(inflight)
-		case <-timer.C():
-			m.calInflight(atomic.LoadInt32(&m.inflight))
-		case <-m.stopCh:
-			return
-		}
-		timer.Reset(timerDuration)
-	}
-}
-
-func (m *meter) calInflight(inflight int32) {
-	m.mu.Lock()
-
-	now := m.clock.Now()
-	milli := now.UnixMilli()
-	currentIndex := int(milli / int64(InflightMeterBucketDuration/time.Millisecond) % InflightMeterBucketLen)
-	lastIndex := m.inflightIndex
-
-	if currentIndex == lastIndex {
-		max := m.inflightBuckets[currentIndex]
-		if inflight > max {
-			m.inflightBuckets[currentIndex] = inflight
-		}
-	} else {
-		fakeIndex := currentIndex
-		if currentIndex < lastIndex {
-			fakeIndex += InflightMeterBucketLen
-		}
-		inflightDelta := m.inflightBuckets[lastIndex]
-
-		for i := lastIndex + 1; i < fakeIndex; i++ {
-			index := i % InflightMeterBucketLen
-			inflightDelta -= m.inflightBuckets[index]
-			m.inflightBuckets[index] = 0
-		}
-		inflightDelta -= m.inflightBuckets[currentIndex]
-		m.inflightBuckets[currentIndex] = inflight
-		m.inflightIndex = currentIndex
-
-		m.inflightAvg = m.inflightAvg + float64(inflightDelta)*InflightMeterBucketDuration.Seconds()
-
-		max := int32(0)
-		for _, ift := range m.inflightBuckets {
-			if ift > max {
-				max = ift
-			}
-		}
-		m.inflightMax = max
-
-		if m.debug {
-			klog.Infof("[debug] [%v] bucket: %v, delta: %v, max: %v, index: %v, avg: %.2f",
-				m.clock.Now().Format(time.RFC3339Nano), m.inflightBuckets, inflightDelta, max, currentIndex, m.inflightAvg)
-		}
-	}
-
-	m.mu.Unlock()
 }
 
 func EnableGlobalFlowControl(schema proxyv1alpha1.FlowControlSchema) bool {

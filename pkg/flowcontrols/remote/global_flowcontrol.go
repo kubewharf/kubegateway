@@ -1,15 +1,17 @@
 package remote
 
 import (
-	"k8s.io/klog"
 	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"k8s.io/klog"
+
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	"github.com/kubewharf/kubegateway/pkg/flowcontrols/flowcontrol"
+	"github.com/kubewharf/kubegateway/pkg/flowcontrols/util"
 	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 )
 
@@ -111,7 +113,7 @@ type GlobalCounterFlowControl interface {
 type maxInflightWrapper struct {
 	flowcontrol.FlowControl
 	fcc     *flowControlCache
-	meter   *meter
+	meter   *util.Meter
 	counter CounterFun
 	lock    sync.Mutex
 	cond    *sync.Cond
@@ -127,7 +129,7 @@ type maxInflightWrapper struct {
 }
 
 func (m *maxInflightWrapper) ExpectToken() int32 {
-	inflight := m.meter.currentInflight()
+	inflight := m.meter.CurrentInflight()
 
 	acquire := int32(0)
 	overLimited := atomic.LoadInt32(&m.overLimited)
@@ -178,7 +180,7 @@ func (m *maxInflightWrapper) SetLimit(acquireResult *AcquireResult) bool {
 
 		m.lock.Lock()
 		if atomic.LoadUint32(&m.serverUnavailable) == 0 {
-			inflight := m.meter.maxInflight()
+			inflight := m.meter.MaxInflight()
 			localMax := m.fcc.local.localConfig.MaxRequestsInflight.Max
 			if inflight < localMax {
 				inflight = localMax
@@ -250,7 +252,7 @@ func (m *maxInflightWrapper) TryAcquire() bool {
 		return m.FlowControl.TryAcquire()
 	}
 
-	currentInflight := atomic.LoadInt32(&m.meter.inflight)
+	currentInflight := m.meter.CurrentInflight()
 	naxInflight := atomic.LoadInt32(&m.acquiredMaxInflight)
 	overLimited := atomic.LoadInt32(&m.overLimited)
 	max := atomic.LoadInt32(&m.max)
@@ -295,7 +297,7 @@ func (m *maxInflightWrapper) Release() {
 type tokenBucketWrapper struct {
 	flowcontrol.FlowControl
 	fcc     *flowControlCache
-	meter   *meter
+	meter   *util.Meter
 	counter CounterFun
 	lock    sync.Mutex
 	cond    *sync.Cond
@@ -316,7 +318,7 @@ func (m *tokenBucketWrapper) ExpectToken() int32 {
 	expect := m.reserve - token
 
 	batch := m.tokenBatch
-	lastQPS := m.meter.rate()
+	lastQPS := m.meter.Rate()
 	if lastQPS > float64(m.tokenBatch) {
 		batch = int32(lastQPS) * GlobalTokenBucketBatchAcquiredPercent / 100
 		if batch < GlobalTokenBucketBatchAcquireMin {
@@ -365,7 +367,7 @@ func (m *tokenBucketWrapper) SetLimit(acquireResult *AcquireResult) bool {
 		}
 		m.lock.Lock()
 		if atomic.LoadUint32(&m.serverUnavailable) == 0 {
-			lastQPS := m.meter.rate()
+			lastQPS := m.meter.Rate()
 			localQPS := m.fcc.local.localConfig.TokenBucket.QPS
 			if lastQPS < float64(localQPS) {
 				lastQPS = float64(localQPS)

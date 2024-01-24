@@ -1,15 +1,18 @@
-package remote
+package util
 
 import (
-	"k8s.io/apimachinery/pkg/util/clock"
 	"sync"
 	"testing"
 	"time"
+
+	"k8s.io/apimachinery/pkg/util/clock"
 )
 
 func Test_meter_inflight(t *testing.T) {
-	cluster := "fake-cluster"
 	name := "fake-flowcontrol"
+
+	inflightBucketSecond := 0.1
+	inflightBucketLen := 6
 
 	type fields struct {
 		mockInflightPerBuckets []int32
@@ -27,7 +30,7 @@ func Test_meter_inflight(t *testing.T) {
 				mockInflightPerBuckets: []int32{1, 3, 5, 4, 2, 3},
 				debugLog:               false,
 			},
-			wantAvg: 3, // sum(1, 3, 5, 4, 2)*0.2
+			wantAvg: 15 * inflightBucketSecond, // sum(1, 3, 5, 4, 2)*0.2
 			wantMax: 5,
 		},
 		{
@@ -36,7 +39,7 @@ func Test_meter_inflight(t *testing.T) {
 				mockInflightPerBuckets: []int32{1, 3, 5, 4, 2, 1, 6, 3},
 				debugLog:               false,
 			},
-			wantAvg: 3.6, // sum(5, 4, 2, 1, 6)*0.2
+			wantAvg: 18 * inflightBucketSecond, // sum(5, 4, 2, 1, 6)*0.2
 			wantMax: 6,
 		},
 		{
@@ -45,7 +48,7 @@ func Test_meter_inflight(t *testing.T) {
 				mockInflightPerBuckets: []int32{1, 3, 5, 4, 2, 3, 8, 4, 3, 6, 2, 4, 3},
 				debugLog:               false,
 			},
-			wantAvg: 3.8,
+			wantAvg: 19 * inflightBucketSecond,
 			wantMax: 6,
 		},
 		{
@@ -54,7 +57,7 @@ func Test_meter_inflight(t *testing.T) {
 				mockInflightPerBuckets: []int32{1, 3, 5, 4, 2, 3, 6, 4, 3, 8, 2, 4, 3},
 				debugLog:               false,
 			},
-			wantAvg: 4.2,
+			wantAvg: 21 * inflightBucketSecond,
 			wantMax: 8,
 		},
 		{
@@ -63,23 +66,27 @@ func Test_meter_inflight(t *testing.T) {
 				mockInflightPerBuckets: []int32{1, 3, 5, 4, 2, 3, 7, 4, 3, 8, 2, 4, 3, 9, 4, 6, 3, 8, 6, 3, 5, 6, 7, 5, 3, 1, 9, 4},
 				debugLog:               false,
 			},
-			wantAvg: 5,
+			wantAvg: 25 * inflightBucketSecond,
 			wantMax: 9,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeClock := clock.NewFakeClock(time.Now())
-			m := &meter{
-				cluster:         cluster,
-				name:            name,
-				stopCh:          make(chan struct{}),
-				clock:           fakeClock,
-				last:            time.Now(),
-				mu:              sync.Mutex{},
-				counterBuckets:  make([]float64, QPSMeterBucketLen),
-				inflightBuckets: make([]int32, InflightMeterBucketLen),
-				inflightChan:    make(chan int32, 100),
+			m := &Meter{
+				name:               name,
+				stopCh:             make(chan struct{}),
+				clock:              fakeClock,
+				last:               time.Now(),
+				mu:                 sync.Mutex{},
+				counterBuckets:     make([]float64, 3),
+				rateBucketLen:      3,
+				rateBucketDuration: time.Second,
+
+				inflightBuckets:        make([]int32, inflightBucketLen),
+				inflightBucketLen:      inflightBucketLen,
+				inflightBucketDuration: time.Millisecond * time.Duration(1000*inflightBucketSecond),
+				inflightChan:           make(chan int32, 100),
 
 				debug: tt.fields.debugLog,
 			}
@@ -92,13 +99,13 @@ func Test_meter_inflight(t *testing.T) {
 				if tt.fields.debugLog {
 					t.Logf("clock: %v", m.clock.Now().Format(time.RFC3339Nano))
 				}
-				fakeClock.Sleep(InflightMeterBucketDuration)
+				fakeClock.Sleep(m.inflightBucketDuration)
 			}
 
-			if delta := m.avgInflight() - tt.wantAvg; delta > 0.001 || delta < -0.001 {
-				t.Errorf("avgInflight() = %v, want %v", m.avgInflight(), tt.wantAvg)
+			if delta := m.AvgInflight() - tt.wantAvg; delta > 0.001 || delta < -0.001 {
+				t.Errorf("avgInflight() = %v, want %v", m.AvgInflight(), tt.wantAvg)
 			}
-			if got := m.maxInflight(); got != tt.wantMax {
+			if got := m.MaxInflight(); got != tt.wantMax {
 				t.Errorf("maxInflight() = %v, want %v", got, tt.wantMax)
 			}
 		})

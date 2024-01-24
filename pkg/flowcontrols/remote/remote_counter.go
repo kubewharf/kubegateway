@@ -2,7 +2,6 @@ package remote
 
 import (
 	"context"
-	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -13,7 +12,7 @@ import (
 	"k8s.io/klog"
 
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
-	"github.com/kubewharf/kubegateway/pkg/flowcontrols/util"
+	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 	"github.com/kubewharf/kubegateway/pkg/ratelimiter/clientsets"
 )
 
@@ -86,7 +85,6 @@ func (g *globalCounterManager) Add(name string, typ proxyv1alpha1.FlowControlSch
 	g.counterMap[name] = counter
 
 	go counter.resetCheck(internalStopCh)
-	go counter.debugInfo(internalStopCh)
 
 	stopCh := flowControl.Done()
 	go func() {
@@ -297,12 +295,6 @@ type globalCounter struct {
 	eventCh      chan struct{}
 	manager      *globalCounterManager
 	flowControl  RemoteFlowControlWrapper
-
-	// debug
-	requiredRate util.RateMeter
-	acquireRate  util.RateMeter
-	reqRate      util.RateMeter
-	limitedRate  util.RateMeter
 }
 
 type AcquireResult struct {
@@ -327,17 +319,6 @@ func (g *globalCounter) send(response *AcquireResult) {
 	if len(response.result.Error) != 0 && response.result.Error != "RequestIDTooOld" {
 		klog.Warningf("[global counter] cluster=%q flowcontrol=%q global count response err: %v",
 			g.manager.cluster, g.name, response.result.Error)
-	}
-
-	// debug
-	{
-		g.requiredRate.RecordN(int64(response.request.Tokens))
-		g.reqRate.Record()
-		if response.result.Accept {
-			g.acquireRate.RecordN(int64(response.result.Limit))
-		} else {
-			g.limitedRate.Record()
-		}
 	}
 
 	if g.flowControl.SetLimit(response) {
@@ -379,25 +360,6 @@ func (g *globalCounter) resetCheck(stopCh <-chan struct{}) {
 				g.flowControl.SetLimit(&AcquireResult{
 					result: result,
 				})
-			}
-		case <-stopCh:
-			return
-		}
-	}
-}
-
-func (g *globalCounter) debugInfo(stopCh <-chan struct{}) {
-	ticker := time.NewTicker(time.Second * 1)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ticker.C:
-			if os.Getenv("DEBUG_LIMITER_COUNTER") == "true" {
-				klog.Infof("[debug] remote counter [%v/%v/%v]: token [require: %v, acquire: %v], request: [total: %v, limited: %v]",
-					g.manager.cluster, g.name, g.manager.clientID,
-					g.requiredRate.Delta(), g.acquireRate.Delta(),
-					g.reqRate.Delta(), g.limitedRate.Delta(),
-				)
 			}
 		case <-stopCh:
 			return
