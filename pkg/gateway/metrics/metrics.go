@@ -15,7 +15,6 @@
 package metrics
 
 import (
-	"k8s.io/klog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -125,15 +124,13 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint, flowControl st
 		Request:     req,
 	})
 
-	// We are only interested in response sizes of read requests.
-	// nolint:goconst
-	if requestInfo.IsResourceRequest && (verb == "GET" || verb == "LIST") {
+	if requestInfo.IsResourceRequest {
 		ProxyResponseSizesObservers.Observe(MetricInfo{
 			ServerName:   serverName,
 			Endpoint:     endpoint,
 			Verb:         verb,
 			Resource:     resource,
-			ResponseSize: float64(respSize),
+			ResponseSize: int64(respSize),
 			Request:      req,
 		})
 	}
@@ -283,11 +280,15 @@ func RecordGlobalFlowControlAcquire(serverName string, flowControlType string, l
 }
 
 func RecordProxyRateAndInflight(rate float64, inflight int32) {
-	// TODO
-	klog.V(2).Infof("[debug] request rate: %v, inflight: %v", rate, inflight)
+	ProxyRequestInflightObservers.Observe(MetricInfo{
+		Rate:     rate,
+		Inflight: float64(inflight),
+	})
 }
 
-func RecordRequestThroughput(input, output float64) {
-	// TODO
-	klog.V(2).Infof("[debug] request input: %.5f KB, output: %.5f KB", input/1024, output/1024)
+func RecordRequestThroughput(requestSizeTotal, responseSizeTotal int64) {
+	ProxyRequestThroughputObservers.Observe(MetricInfo{
+		RequestSize:  requestSizeTotal,
+		ResponseSize: responseSizeTotal,
+	})
 }

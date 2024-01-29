@@ -24,8 +24,10 @@ var (
 	ProxyWatcherUnregisteredObservers   = newUnionObserver()
 
 	ProxyRateLimiterRequestCounterObservers = newUnionObserver()
+	ProxyGlobalFlowControlAcquireObservers  = newUnionObserver()
 
-	ProxyGlobalFlowControlAcquireObservers = newUnionObserver()
+	ProxyRequestInflightObservers   = newUnionObserver()
+	ProxyRequestThroughputObservers = newUnionObserver()
 )
 
 type MetricInfo struct {
@@ -39,8 +41,11 @@ type MetricInfo struct {
 	HttpCode          string
 	Path              string
 	Reason            string
-	ResponseSize      float64
+	RequestSize       int64
+	ResponseSize      int64
 	Latency           float64
+	Rate              float64
+	Inflight          float64
 
 	Method      string
 	Result      string
