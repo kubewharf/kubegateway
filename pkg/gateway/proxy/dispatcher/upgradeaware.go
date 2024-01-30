@@ -15,8 +15,6 @@
 package dispatcher
 
 import (
-	"context"
-	"errors"
 	"log"
 	"net/http"
 	"net/url"
@@ -24,7 +22,6 @@ import (
 
 	"github.com/kubewharf/kubegateway/pkg/clusters"
 	"github.com/kubewharf/kubegateway/pkg/gateway/httputil"
-	"github.com/kubewharf/kubegateway/pkg/gateway/net"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
@@ -44,12 +41,11 @@ type UpgradeAwareHandler struct {
 
 // NewUpgradeAwareHandler creates a new proxy handler with a default flush interval. Responder is required for returning
 // errors to the caller.
-func NewUpgradeAwareHandler(location *url.URL, transport http.RoundTripper, upgradeTransport proxy.UpgradeRequestRoundTripper, wrapTransport, upgradeRequired bool, responder proxy.ErrorResponder, endpoint *clusters.EndpointInfo) *UpgradeAwareHandler {
+func NewUpgradeAwareHandler(location *url.URL, transport http.RoundTripper, upgradeTransport proxy.UpgradeRequestRoundTripper, wrapTransport, upgradeRequired bool, responder proxy.ErrorResponder) *UpgradeAwareHandler {
 	handler := proxy.NewUpgradeAwareHandler(location, transport, wrapTransport, upgradeRequired, responder)
 	handler.UpgradeTransport = upgradeTransport
 	return &UpgradeAwareHandler{
 		UpgradeAwareHandler: handler,
-		endpoint:            endpoint,
 	}
 }
 
@@ -115,52 +111,10 @@ func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 		// if an optional error interceptor/responder was provided wire it
 		// the custom responder might be used for providing a unified error reporting
 		// or supporting retry mechanisms by not sending non-fatal errors to the clients
-		proxy.ErrorHandler = h.ErrorHandler
+		proxy.ErrorHandler = h.Responder.Error
 	}
 	proxy.ServeHTTP(w, newReq)
 
-}
-
-func (h *UpgradeAwareHandler) ErrorHandler(w http.ResponseWriter, req *http.Request, err error) {
-	if utilnet.IsConnectionRefused(err) {
-		klog.Errorf("connection refused err: %v, trigger healthcheck", err)
-		h.endpoint.TriggerHealthCheck()
-	}
-
-	if errors.Is(err, http.ErrAbortHandler) {
-		skipResponseErr := true
-
-		var urlHost string
-		if req.URL != nil {
-			urlHost = req.URL.Host
-		}
-		err = errors.Unwrap(err)
-		switch {
-		case errors.Is(err, context.Canceled), strings.Contains(err.Error(), "client disconnected"):
-			// ignore request canceled or client disconnected
-			if klog.V(5) {
-				klog.Errorf("connection disconnected: method=%q host=%q endpoint=%v remoteAddr=%v uri=%q , err: %v",
-					req.Method, net.HostWithoutPort(req.Host), urlHost, req.RemoteAddr, req.RequestURI, err)
-			}
-		case strings.Contains(err.Error(), "http2: server sent GOAWAY and closed the connection"):
-			// skip write response err message, otherwise client informers will relist for error ""unable to decode an event"
-			w.Header().Set("Connection", "close")
-			if klog.V(4) {
-				klog.Errorf("connection closed: method=%q host=%q endpoint=%v remoteAddr=%v uri=%q , err: %v",
-					req.Method, net.HostWithoutPort(req.Host), urlHost, req.RemoteAddr, req.RequestURI, err)
-			}
-		case strings.Contains(err.Error(), "http2: client connection lost"):
-			w.Header().Set("Connection", "close")
-			skipResponseErr = false
-		default:
-			skipResponseErr = false
-		}
-		if skipResponseErr {
-			return
-		}
-	}
-
-	h.Responder.Error(w, req, err)
 }
 
 type noSuppressPanicError struct{}

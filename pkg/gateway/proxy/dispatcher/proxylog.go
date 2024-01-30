@@ -227,5 +227,9 @@ func proxyLogPred(status int, verb string, latency time.Duration, isLongRunning 
 		return true
 	}
 
+	if isLongRunning && status == 0 {
+		return false
+	}
+
 	return (status < http.StatusOK || status >= http.StatusInternalServerError) && status != http.StatusSwitchingProtocols
 }
