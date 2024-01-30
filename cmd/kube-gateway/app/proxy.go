@@ -34,6 +34,7 @@ import (
 	"github.com/kubewharf/kubegateway/pkg/gateway/controllers"
 	controlplaneserver "github.com/kubewharf/kubegateway/pkg/gateway/controlplane"
 	gatewayfilters "github.com/kubewharf/kubegateway/pkg/gateway/endpoints/filters"
+	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/monitor"
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
 	proxyserver "github.com/kubewharf/kubegateway/pkg/gateway/proxy"
 	proxydispatcher "github.com/kubewharf/kubegateway/pkg/gateway/proxy/dispatcher"
@@ -74,10 +75,12 @@ func CreateProxyConfig(
 	recommendedConfig.Config.SecureServing.DynamicClientConfig = clusterController
 	// Proxy handler
 	oo := &proxyHandlerOptions{
-		clusterManager:        clusterController,
-		enableAccessLog:       o.Logging.EnableProxyAccessLog,
-		loadPressureThreshold: o.ServerRun.LoadPressureThreshold,
-		goawayChance:          o.ServerRun.GoawayChance,
+		clusterManager:           clusterController,
+		enableAccessLog:          o.Logging.EnableProxyAccessLog,
+		maxInflightThreshold:     o.ServerRun.MaxInflightThreshold,
+		maxQPSThreshold:          o.ServerRun.MaxQPSThreshold,
+		maxThroughputMBThreshold: o.ServerRun.MaxThroughputMBThreshold,
+		goawayChance:             o.ServerRun.GoawayChance,
 	}
 	recommendedConfig.Config.BuildHandlerChainFunc = buildProxyHandlerChainFunc(oo)
 
@@ -123,10 +126,12 @@ func buildProxyRecommenedOptions(o *options.ProxyOptions, controlplaneOptions *o
 }
 
 type proxyHandlerOptions struct {
-	clusterManager        clusters.Manager
-	enableAccessLog       bool
-	loadPressureThreshold int
-	goawayChance          float64
+	clusterManager           clusters.Manager
+	enableAccessLog          bool
+	maxInflightThreshold     int32
+	maxQPSThreshold          int32
+	maxThroughputMBThreshold int32
+	goawayChance             float64
 }
 
 func buildProxyHandlerChainFunc(o *proxyHandlerOptions) func(apiHandler http.Handler, c *genericapiserver.Config) http.Handler {
@@ -146,12 +151,19 @@ func buildProxyHandlerChainFunc(o *proxyHandlerOptions) func(apiHandler http.Han
 		// handler = gatewayfilters.WithTimeoutForNonLongRunningRequests(handler, c.LongRunningFunc, c.RequestTimeout)
 		handler = genericfilters.WithWaitGroup(handler, c.LongRunningFunc, c.HandlerChainWaitGroup)
 		// new gateway handler chain
+
+		// rate and throughput monitor
+		throughputMonitor := monitor.NewThroughputMonitor()
+		rateMonitor := monitor.NewRateMonitor()
+		handler = gatewayfilters.WithRequestThroughput(handler, throughputMonitor)
+		handler = gatewayfilters.WithRequestRate(handler, c.LongRunningFunc, rateMonitor)
+
 		handler = gatewayfilters.WithPreProcessingMetrics(handler)
 		handler = gatewayfilters.WithExtraRequestInfo(handler, &request.ExtraRequestInfoFactory{})
 		handler = gatewayfilters.WithTerminationMetrics(handler)
 		handler = gatewayfilters.WithRequestInfo(handler, c.RequestInfoResolver)
-		if c.SecureServing != nil && !c.SecureServing.DisableHTTP2 && o.goawayChance > 0 && o.loadPressureThreshold > 0 {
-			handler = gatewayfilters.WithLoadPressureGoaway(handler, o.loadPressureThreshold, o.goawayChance)
+		if c.SecureServing != nil && !c.SecureServing.DisableHTTP2 && o.goawayChance > 0 {
+			handler = gatewayfilters.WithLoadPressureGoaway(handler, o.maxInflightThreshold, o.maxQPSThreshold, o.maxThroughputMBThreshold, o.goawayChance, rateMonitor, throughputMonitor)
 		}
 		handler = genericapifilters.WithCacheControl(handler)
 		handler = gatewayfilters.WithNoLoggingPanicRecovery(handler)

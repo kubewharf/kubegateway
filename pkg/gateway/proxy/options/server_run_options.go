@@ -21,14 +21,16 @@ import (
 )
 
 type ServerRunOptions struct {
-	LoadPressureThreshold int
-	GoawayChance          float64
+	MaxInflightThreshold     int32
+	MaxQPSThreshold          int32
+	MaxThroughputMBThreshold int32
+	GoawayChance             float64
 }
 
 func NewServerRunOptions() *ServerRunOptions {
 	return &ServerRunOptions{
-		GoawayChance:          0,
-		LoadPressureThreshold: 0,
+		GoawayChance:         0,
+		MaxInflightThreshold: 0,
 	}
 }
 
@@ -40,8 +42,16 @@ func (s *ServerRunOptions) Validate() []error {
 		errors = append(errors, fmt.Errorf("--proxy-goaway-chance can not be less than 0"))
 	}
 
-	if s.LoadPressureThreshold < 0 {
-		errors = append(errors, fmt.Errorf("--proxy-load-pressure-threshold can not be less than 0"))
+	if s.MaxInflightThreshold < 0 {
+		errors = append(errors, fmt.Errorf("--proxy-max-inflight-threshold can not be less than 0"))
+	}
+
+	if s.MaxQPSThreshold < 0 {
+		errors = append(errors, fmt.Errorf("--proxy-max-qps-threshold can not be less than 0"))
+	}
+
+	if s.MaxThroughputMBThreshold < 0 {
+		errors = append(errors, fmt.Errorf("--proxy-max-throughput-mb-threshold can not be less than 0"))
 	}
 
 	return errors
@@ -49,8 +59,16 @@ func (s *ServerRunOptions) Validate() []error {
 
 // AddFlags adds flags to the specified FlagSet
 func (s *ServerRunOptions) AddFlags(fs *pflag.FlagSet) {
-	fs.IntVar(&s.LoadPressureThreshold, "proxy-load-pressure-threshold", s.LoadPressureThreshold, ""+
-		"The number of requests in flight at a given time indicates that proxy has load pressure. When proxy has load pressure, "+
+	fs.Int32Var(&s.MaxInflightThreshold, "proxy-max-inflight-threshold", s.MaxInflightThreshold, ""+
+		"The load pressure threshold of requests number in flight at a given time. When proxy has load pressure, "+
+		"it randomly close a connection (GOAWAY) to prevent HTTP/2 clients from getting stuck on a single kube-gateway proxy")
+
+	fs.Int32Var(&s.MaxQPSThreshold, "proxy-max-qps-threshold", s.MaxQPSThreshold, ""+
+		"The load pressure threshold of requests qps. When proxy has load pressure, "+
+		"it randomly close a connection (GOAWAY) to prevent HTTP/2 clients from getting stuck on a single kube-gateway proxy")
+
+	fs.Int32Var(&s.MaxThroughputMBThreshold, "proxy-max-throughput-mb-threshold", s.MaxThroughputMBThreshold, ""+
+		"The load pressure threshold of requests throughput im MB. When proxy has load pressure, "+
 		"it randomly close a connection (GOAWAY) to prevent HTTP/2 clients from getting stuck on a single kube-gateway proxy")
 
 	fs.Float64Var(&s.GoawayChance, "proxy-goaway-chance", s.GoawayChance, ""+

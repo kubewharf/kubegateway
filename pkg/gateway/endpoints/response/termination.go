@@ -29,6 +29,8 @@ import (
 const (
 	RetryAfter            = 1
 	UnavailableRetryAfter = 30
+
+	TerminationReasonRateLimited = "rate_limited"
 )
 
 func TerminateWithError(codecs serializer.CodecFactory, err *errors.StatusError, reason string, w http.ResponseWriter, req *http.Request) {

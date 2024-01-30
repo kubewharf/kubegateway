@@ -15,6 +15,7 @@
 package metrics
 
 import (
+	"k8s.io/klog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -279,4 +280,14 @@ func RecordGlobalFlowControlAcquire(serverName string, flowControlType string, l
 		FlowControl: flowControl,
 		Latency:     elapsed.Seconds(),
 	})
+}
+
+func RecordProxyRateAndInflight(rate float64, inflight int32) {
+	// TODO
+	klog.V(2).Infof("[debug] request rate: %v, inflight: %v", rate, inflight)
+}
+
+func RecordRequestThroughput(input, output float64) {
+	// TODO
+	klog.V(2).Infof("[debug] request input: %.5f KB, output: %.5f KB", input/1024, output/1024)
 }

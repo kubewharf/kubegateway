@@ -15,9 +15,10 @@
 package filters
 
 import (
+	"fmt"
 	"net/http"
-	"sync/atomic"
 
+	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/monitor"
 	"k8s.io/apiserver/pkg/server/filters"
 	"k8s.io/klog"
 )
@@ -28,8 +29,12 @@ type goaway struct {
 	goawayHandler http.Handler
 	innerHandler  http.Handler
 
-	loadPressureThreshold uint64
-	curRequestsInflight   uint64
+	inflightThreshold        int32
+	qpsThreshold             int32
+	throughputThresholdBytes int32
+
+	rateMonitor       *monitor.RateMonitor
+	throughputMonitor *monitor.ThroughputMonitor
 }
 
 // WithLoadPressureGoaway returns an http.Handler that send GOAWAY probabilistically
@@ -37,17 +42,30 @@ type goaway struct {
 // After client receive GOAWAY, the in-flight long-running requests will not be influenced,
 // and the new requests will use a new TCP connection to re-balancing to another server behind
 // the load balance.
-func WithLoadPressureGoaway(inner http.Handler, loadPressureThreshold int, chance float64) http.Handler {
-	if loadPressureThreshold <= 0 || chance <= 0.0 {
+func WithLoadPressureGoaway(
+	inner http.Handler,
+	inflightThreshold int32,
+	qpsThreshold int32,
+	throughputThresholdMB int32,
+	chance float64,
+	rateMonitor *monitor.RateMonitor,
+	throughputMonitor *monitor.ThroughputMonitor,
+) http.Handler {
+	if chance <= 0.0 || (inflightThreshold <= 0 && qpsThreshold <= 0 && throughputThresholdMB <= 0) {
 		// proxy goaway is disabled
 		return inner
 	}
-	klog.V(3).Infof("proxy load pressure goaway handler is enabled, threshold=%v, chance=%v", loadPressureThreshold, chance)
+	klog.V(2).Infof("proxy load pressure goaway handler is enabled, inflight-threshold=%v, qps-threshold=%v, throughput-threshold=%vMB, chance=%v",
+		inflightThreshold, qpsThreshold, throughputThresholdMB, chance)
+
 	return &goaway{
-		goawayHandler:         filters.WithProbabilisticGoaway(inner, chance),
-		innerHandler:          inner,
-		loadPressureThreshold: uint64(loadPressureThreshold),
-		curRequestsInflight:   0,
+		goawayHandler:            filters.WithProbabilisticGoaway(inner, chance),
+		innerHandler:             inner,
+		inflightThreshold:        inflightThreshold,
+		qpsThreshold:             qpsThreshold,
+		throughputThresholdBytes: throughputThresholdMB << 20,
+		rateMonitor:              rateMonitor,
+		throughputMonitor:        throughputMonitor,
 	}
 }
 
@@ -56,20 +74,40 @@ func (h *goaway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.innerHandler.ServeHTTP(w, r)
 		return
 	}
-	hasPressure := h.hasLoadPressure()
-	defer h.end()
-	if hasPressure {
+	loadPressure := h.hasLoadPressure()
+
+	if len(loadPressure) > 0 {
 		h.goawayHandler.ServeHTTP(w, r)
+		coonHeader := w.Header().Get("Connection")
+		if coonHeader == "close" {
+			klog.V(4).Infof("Send GOAWAY to connection, %v method=%q host=%q uri=%q remoteAddr=%q", loadPressure, r.Method, r.Host, r.RequestURI, r.RemoteAddr)
+		}
 	} else {
 		h.innerHandler.ServeHTTP(w, r)
 	}
 }
 
-func (h *goaway) hasLoadPressure() bool {
-	count := atomic.AddUint64(&h.curRequestsInflight, 1)
-	return count > h.loadPressureThreshold
-}
+func (h *goaway) hasLoadPressure() string {
+	var pressure string
+	if h.inflightThreshold > 0 {
+		inflight := h.rateMonitor.Inflight()
+		if inflight > h.inflightThreshold {
+			pressure = fmt.Sprintf("inflight=%v", inflight)
+		}
+	}
+	if h.qpsThreshold > 0 {
+		rate := h.rateMonitor.Rate()
+		if rate > float64(h.qpsThreshold) {
+			pressure = fmt.Sprintf("rate=%.0f", rate)
+		}
+	}
 
-func (h *goaway) end() {
-	atomic.AddUint64(&h.curRequestsInflight, ^uint64(0))
+	if h.throughputThresholdBytes > 0 {
+		throughput := h.throughputMonitor.Throughput()
+		if throughput > float64(h.throughputThresholdBytes) {
+			pressure = fmt.Sprintf("throughput=%.0fMB", throughput/1024/1024)
+		}
+	}
+
+	return pressure
 }
