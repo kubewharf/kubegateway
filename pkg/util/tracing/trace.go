@@ -30,6 +30,34 @@ const (
 	StepWroteResp           = "wrote_resp"
 )
 
+const (
+	MetricStageClientRead    = "client_read"
+	MetricStageClientWrite   = "client_write"
+	MetricStageUpstreamRead  = "upstream_read"
+	MetricStageUpstreamWrite = "upstream_write"
+	MetricStageHandlingDelay = "handling_delay"
+)
+
+var (
+	stagesTransitions = map[string][]Transition{
+		MetricStageClientRead: {
+			{From: StepWroteRequestHeader, To: StepReadRequest},
+		},
+		MetricStageUpstreamWrite: {
+			{From: StepGotConn, To: StepWroteRequestHeader},
+			{From: StepReadRequest, FromAlt: StepWroteRequestHeader, To: StepWroteRequest},
+		},
+		MetricStageUpstreamRead: {
+			{From: StepWroteRequest, To: StepGotResponse},
+			{From: StepWroteResponseHeader, To: StepReadResp},
+		},
+		MetricStageClientWrite: {
+			{From: StepGotResponse, To: StepWroteResponseHeader},
+			{From: StepReadResp, To: StepWroteResp},
+		},
+	}
+)
+
 // WithRequestTraceInfo returns a copy of parent in which the RequestTraceInfo value is set
 func WithRequestTraceInfo(parent context.Context, info *RequestTraceInfo) context.Context {
 	ctx := httptrace.WithClientTrace(parent, info.httpTrace)
@@ -76,6 +104,8 @@ type RequestTraceInfo struct {
 	steps      []*step
 	httpTrace  *httptrace.ClientTrace
 	sync.Mutex
+
+	stageLatency map[string]time.Duration
 }
 
 func (t *RequestTraceInfo) WithHttpTrace() {
@@ -118,6 +148,42 @@ func (t *RequestTraceInfo) End() {
 
 func (t *RequestTraceInfo) ID() int32 {
 	return t.traceId
+}
+
+func (t *RequestTraceInfo) StageLatency() map[string]time.Duration {
+	if t.stageLatency != nil {
+		return t.stageLatency
+	}
+
+	stepTimestamp := map[string]time.Time{}
+	for _, st := range t.steps {
+		stepTimestamp[st.msg] = st.stepTime
+	}
+
+	eliminatedLatency := time.Duration(0)
+	stageLatency := map[string]time.Duration{}
+	for stage, transitions := range stagesTransitions {
+		for _, trans := range transitions {
+			start, startExist := stepTimestamp[trans.From]
+			if !startExist {
+				start, startExist = stepTimestamp[trans.FromAlt]
+			}
+			end, endExist := stepTimestamp[trans.To]
+			if !startExist || !endExist {
+				continue
+			}
+			cost := end.Sub(start)
+			if cost < 0 {
+				continue
+			}
+			stageLatency[stage] += cost
+			eliminatedLatency += cost
+		}
+	}
+	stageLatency[MetricStageHandlingDelay] = t.endTime.Sub(t.startTime) - eliminatedLatency
+
+	t.stageLatency = stageLatency
+	return stageLatency
 }
 
 func (t *RequestTraceInfo) Log() {
@@ -172,4 +238,11 @@ func formatAttributes(attributes []KeyValue) string {
 		kvs = append(kvs, fmt.Sprintf("%s=%q", a.Key, a.Value))
 	}
 	return strings.Join(kvs, " ")
+}
+
+// Transition describe transition between two phases.
+type Transition struct {
+	From    string
+	FromAlt string // alternative
+	To      string
 }

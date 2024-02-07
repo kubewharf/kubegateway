@@ -15,6 +15,7 @@
 package metrics
 
 import (
+	"github.com/kubewharf/kubegateway/pkg/util/tracing"
 	"github.com/prometheus/client_golang/prometheus"
 	compbasemetrics "k8s.io/component-base/metrics"
 	"os"
@@ -169,6 +170,19 @@ var (
 		[]string{"pid", "type"},
 	)
 
+	proxyHandlingLatencies = compbasemetrics.NewHistogramVec(
+		&compbasemetrics.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "handling_duration_seconds",
+			Help:      "Proxy handling latency distribution in seconds for each serverName, endpoint, verb, resource, tracing stage.",
+			// Start with 1ms with the last bucket being [~10s, Inf)
+			Buckets:        []float64{0.001, 0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 5, 10},
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"pid", "serverName", "verb", "resource", "stage"},
+	)
+
 	localMetrics = []compbasemetrics.Registerable{
 		proxyReceiveRequestCounter,
 		proxyRequestCounter,
@@ -182,6 +196,7 @@ var (
 		proxyRequestInflight,
 		proxyRequestRate,
 		proxyRequestThroughput,
+		proxyHandlingLatencies,
 	}
 )
 
@@ -210,6 +225,7 @@ func Register() {
 		ProxyGlobalFlowControlAcquireObservers.AddObserver(&proxyGlobalFlowControlAcquireObserver{})
 		ProxyRequestInflightObservers.AddObserver(&proxyRequestInflightObserver{})
 		ProxyRequestThroughputObservers.AddObserver(&proxyRequestThroughputObserver{})
+		ProxyHandlingLatencyObservers.AddObserver(&proxyHandlingLatenciesObserver{})
 	})
 }
 
@@ -285,4 +301,11 @@ type proxyRequestThroughputObserver struct{}
 func (o *proxyRequestThroughputObserver) Observe(metric MetricInfo) {
 	proxyRequestThroughput.WithLabelValues(proxyPid, "request").Set(float64(metric.RequestSize))
 	proxyRequestThroughput.WithLabelValues(proxyPid, "response").Set(float64(metric.ResponseSize))
+}
+
+type proxyHandlingLatenciesObserver struct{}
+
+func (o *proxyHandlingLatenciesObserver) Observe(metric MetricInfo) {
+	proxyHandlingLatencies.WithLabelValues(proxyPid, metric.ServerName, metric.Verb, metric.Resource, tracing.MetricStageHandlingDelay).
+		Observe(metric.TraceLatencies[tracing.MetricStageHandlingDelay].Seconds())
 }

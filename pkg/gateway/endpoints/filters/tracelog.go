@@ -13,6 +13,7 @@ import (
 
 	"github.com/kubewharf/kubegateway/pkg/clusters/features"
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
+	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 	"github.com/kubewharf/kubegateway/pkg/util/tracing"
 )
 
@@ -59,6 +60,8 @@ func WithTraceLog(handler http.Handler, enableTracing bool, longRunningRequestCh
 
 		defer func() {
 			tr.End()
+
+			metrics.RecordProxyTraceLatency(tr.StageLatency(), extraInfo.Hostname, requestInfo)
 
 			threshold := request.LogThreshold(requestInfo.Verb)
 			if req.Header.Get("x-debug-trace-log") == "1" || tr.IfLong(threshold) {

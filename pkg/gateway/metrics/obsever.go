@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"net/http"
+	"time"
 )
 
 type MetricObserver interface {
@@ -28,6 +29,8 @@ var (
 
 	ProxyRequestInflightObservers   = newUnionObserver()
 	ProxyRequestThroughputObservers = newUnionObserver()
+
+	ProxyHandlingLatencyObservers = newUnionObserver()
 )
 
 type MetricInfo struct {
@@ -41,11 +44,13 @@ type MetricInfo struct {
 	HttpCode          string
 	Path              string
 	Reason            string
+	Stage             string
 	RequestSize       int64
 	ResponseSize      int64
 	Latency           float64
 	Rate              float64
 	Inflight          float64
+	TraceLatencies    map[string]time.Duration
 
 	Method      string
 	Result      string
