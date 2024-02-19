@@ -21,6 +21,7 @@ import (
 	authenticationv1 "k8s.io/api/authentication/v1"
 	"k8s.io/apiserver/pkg/authentication/user"
 
+	"github.com/kubewharf/kubegateway/pkg/clusters"
 	"github.com/kubewharf/kubegateway/pkg/gateway/net"
 )
 
@@ -56,6 +57,8 @@ type ExtraRequestInfo struct {
 	Hostname             string // hostname without port
 	IsImpersonateRequest bool
 	Impersonator         user.Info
+	UpstreamCluster      *clusters.ClusterInfo
+	IsProxyRequest       bool
 }
 
 // WithExtraRequestInfo returns a copy of parent in which the ExtraRequestInfo value is set

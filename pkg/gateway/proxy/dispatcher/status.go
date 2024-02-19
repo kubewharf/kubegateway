@@ -35,9 +35,9 @@ import (
 
 var (
 	statusReasonNoReadyEndpoints         = "no_ready_endpoints"
-	statusReasonClusterNotBeingProxied   = "cluster_not_being_proxied"
+	statusReasonClusterNotBeingProxied   = response.TerminationReasonClusterNotBeingProxied
 	statusReasonInvalidRequestContext    = "invalid_request_context"
-	statusReasonCircuitBreaker           = "circuit_breaker"
+	statusReasonCircuitBreaker           = response.TerminationReasonCircuitBreaker
 	statusReasonRateLimited              = response.TerminationReasonRateLimited
 	statusReasonInvalidEndpoint          = "invalid_endpoint"
 	statusReasonUpgradeAwareHandlerError = "upgrade_aware_handler_error"
@@ -110,7 +110,7 @@ func (r *proxyErrorResponder) Error(w http.ResponseWriter, req *http.Request, er
 			klog.Errorf("request abort: verb=%q host=%q endpoint=%q remoteAddr=%q resp=%v uri=%q, responseError=%v, err=[%v]",
 				r.requestInfo.Verb, net.HostWithoutPort(req.Host), urlHost, req.RemoteAddr, r.statusRecorder.Status(), req.RequestURI, responseErr, err)
 		}
-		
+
 		if !responseErr {
 			return
 		}

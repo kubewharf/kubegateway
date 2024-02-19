@@ -30,7 +30,6 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/kubewharf/kubegateway/pkg/clusters"
-	"github.com/kubewharf/kubegateway/pkg/clusters/features"
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/response"
 )
@@ -67,19 +66,9 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		d.responseError(errors.NewInternalError(fmt.Errorf("no request info found in request context")), w, req, statusReasonInvalidRequestContext)
 		return
 	}
-	cluster, ok := d.Get(extraInfo.Hostname)
-	if !ok {
+	cluster := extraInfo.UpstreamCluster
+	if extraInfo.IsProxyRequest && cluster == nil {
 		d.responseError(errors.NewServiceUnavailable(fmt.Sprintf("the request cluster(%s) is not being proxied", extraInfo.Hostname)), w, req, statusReasonClusterNotBeingProxied)
-		return
-	}
-
-	if cluster.FeatureEnabled(features.CloseConnectionWhenIdle) {
-		// Send a GOAWAY and tear down the TCP connection when idle.
-		w.Header().Set("Connection", "close")
-	}
-
-	if cluster.FeatureEnabled(features.DenyAllRequests) {
-		d.responseError(errors.NewServiceUnavailable(fmt.Sprintf("request for %v denied by featureGate(DenyAllRequests)", extraInfo.Hostname)), w, req, statusReasonCircuitBreaker)
 		return
 	}
 

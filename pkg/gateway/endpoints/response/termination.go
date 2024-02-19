@@ -19,8 +19,8 @@ import (
 	"strconv"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
@@ -31,9 +31,12 @@ const (
 	UnavailableRetryAfter = 30
 
 	TerminationReasonRateLimited = "rate_limited"
+
+	TerminationReasonClusterNotBeingProxied = "cluster_not_being_proxied"
+	TerminationReasonCircuitBreaker         = "circuit_breaker"
 )
 
-func TerminateWithError(codecs serializer.CodecFactory, err *errors.StatusError, reason string, w http.ResponseWriter, req *http.Request) {
+func TerminateWithError(codecs runtime.NegotiatedSerializer, err *errors.StatusError, reason string, w http.ResponseWriter, req *http.Request) {
 	if errors.IsTooManyRequests(err) {
 		w.Header().Set("Retry-After", strconv.Itoa(RetryAfter))
 	} else if errors.IsServiceUnavailable(err) {

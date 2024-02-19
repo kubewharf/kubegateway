@@ -16,8 +16,12 @@ package options
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/spf13/pflag"
+	"k8s.io/component-base/featuregate"
+
+	"github.com/kubewharf/kubegateway/pkg/clusters/features"
 )
 
 type ServerRunOptions struct {
@@ -25,12 +29,14 @@ type ServerRunOptions struct {
 	MaxQPSThreshold          int32
 	MaxThroughputMBThreshold int32
 	GoawayChance             float64
+	DefaultFeatureGate       featuregate.MutableFeatureGate
 }
 
 func NewServerRunOptions() *ServerRunOptions {
 	return &ServerRunOptions{
 		GoawayChance:         0,
 		MaxInflightThreshold: 0,
+		DefaultFeatureGate:   features.DefaultMutableFeatureGate,
 	}
 }
 
@@ -76,4 +82,15 @@ func (s *ServerRunOptions) AddFlags(fs *pflag.FlagSet) {
 		"The client's other in-flight requests won't be affected, and the client will reconnect, likely landing on a different kube-gateway after going through the load balancer again. "+
 		"This argument sets the fraction of requests that will be sent a GOAWAY. Clusters with single kube-gateway should NOT enable this. "+
 		"Min is 0 (off), 0.001 (1/1000) is a recommended starting point. This value should not be too big in product environment")
+
+	s.addFeatureGateFlags(fs)
+}
+
+func (s *ServerRunOptions) addFeatureGateFlags(fs *pflag.FlagSet) {
+	local := pflag.NewFlagSet(os.Args[0], pflag.ExitOnError)
+	s.DefaultFeatureGate.AddFlag(local)
+	local.VisitAll(func(fl *pflag.Flag) {
+		fl.Name = fmt.Sprintf("proxy-default-%s", fl.Name)
+		fs.AddFlag(fl)
+	})
 }

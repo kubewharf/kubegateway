@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"k8s.io/apimachinery/pkg/runtime"
 	genericapifilters "k8s.io/apiserver/pkg/endpoints/filters"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
@@ -25,8 +26,8 @@ import (
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
 )
 
-// WithHost attaches a request host to the context.
-func WithExtraRequestInfo(handler http.Handler, resolver request.ExtraRequestInfoResolver) http.Handler {
+// WithExtraRequestInfo attaches a request host to the context.
+func WithExtraRequestInfo(handler http.Handler, resolver request.ExtraRequestInfoResolver, s runtime.NegotiatedSerializer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 		info, err := resolver.NewExtraRequestInfo(req)
@@ -39,7 +40,7 @@ func WithExtraRequestInfo(handler http.Handler, resolver request.ExtraRequestInf
 	})
 }
 
-// record impersonator because request user will be replaced by impersonatee
+// WithImpersonator record impersonator because request user will be replaced by impersonatee
 func WithImpersonator(handler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
