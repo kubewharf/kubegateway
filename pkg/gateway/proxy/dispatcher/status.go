@@ -31,6 +31,7 @@ import (
 	"github.com/kubewharf/kubegateway/pkg/clusters"
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/response"
 	"github.com/kubewharf/kubegateway/pkg/gateway/net"
+	"github.com/kubewharf/kubegateway/pkg/util/tracing"
 )
 
 var (
@@ -107,8 +108,9 @@ func (r *proxyErrorResponder) Error(w http.ResponseWriter, req *http.Request, er
 			if req.URL != nil {
 				urlHost = req.URL.Host
 			}
-			klog.Errorf("request abort: verb=%q host=%q endpoint=%q remoteAddr=%q resp=%v uri=%q, responseError=%v, err=[%v]",
-				r.requestInfo.Verb, net.HostWithoutPort(req.Host), urlHost, req.RemoteAddr, r.statusRecorder.Status(), req.RequestURI, responseErr, err)
+			traceId := tracing.TraceID(req.Context())
+			klog.Errorf("request abort: verb=%q host=%q endpoint=%q remoteAddr=%q resp=%v traceId=%v uri=%q, responseError=%v, err=[%v]",
+				r.requestInfo.Verb, net.HostWithoutPort(req.Host), urlHost, req.RemoteAddr, r.statusRecorder.Status(), traceId, req.RequestURI, responseErr, err)
 		}
 
 		if !responseErr {

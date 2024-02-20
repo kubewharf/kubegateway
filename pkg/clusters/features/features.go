@@ -30,6 +30,9 @@ const (
 
 	// GlobalRateLimiter enable remote limiter for proxy
 	GlobalRateLimiter featuregate.Feature = "GlobalRateLimiter"
+
+	// Tracing enable proxy tracing for trace log and trace metric
+	Tracing featuregate.Feature = "Tracing"
 )
 
 var (
@@ -54,6 +57,7 @@ var (
 		CloseConnectionWhenIdle: {Default: false, PreRelease: featuregate.Alpha},
 		DenyAllRequests:         {Default: false, PreRelease: featuregate.Alpha},
 		GlobalRateLimiter:       {Default: false, PreRelease: featuregate.Alpha},
+		Tracing:                 {Default: false, PreRelease: featuregate.Alpha},
 	}
 )
 

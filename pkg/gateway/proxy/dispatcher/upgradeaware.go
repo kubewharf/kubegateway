@@ -20,13 +20,14 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/kubewharf/kubegateway/pkg/clusters"
-	"github.com/kubewharf/kubegateway/pkg/gateway/httputil"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/util/httpstream"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/proxy"
 	"k8s.io/klog"
+
+	"github.com/kubewharf/kubegateway/pkg/clusters"
+	"github.com/kubewharf/kubegateway/pkg/util/reverseproxy"
 )
 
 // NOTICE: most of the following codes are copied from k8s.io/apimachinery/pkg/util/proxy/upgradeawarehandler.go
@@ -103,7 +104,7 @@ func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 		}
 	}()
 
-	proxy := httputil.NewSingleHostReverseProxy(&url.URL{Scheme: h.Location.Scheme, Host: h.Location.Host})
+	proxy := reverseproxy.NewSingleHostReverseProxy(&url.URL{Scheme: h.Location.Scheme, Host: h.Location.Host})
 	proxy.Transport = h.Transport
 	proxy.FlushInterval = h.FlushInterval
 	proxy.ErrorLog = log.New(noSuppressPanicError{}, "", log.LstdFlags)

@@ -29,6 +29,7 @@ import (
 	"github.com/kubewharf/apiserver-runtime/pkg/server"
 	gatewayrequest "github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
 	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
+	"github.com/kubewharf/kubegateway/pkg/util/tracing"
 )
 
 var _ http.ResponseWriter = &responseWriterDelegator{}
@@ -169,9 +170,10 @@ func (rw *responseWriterDelegator) Log() {
 		return
 	}
 	sourceIPs := utilnet.SourceIPs(rw.req)
+	traceId := tracing.TraceID(rw.req.Context())
 
 	if rw.impersonator != nil {
-		klog.Infof("verb=%q host=%q endpoint=%q URI=%q latency=%v resp=%v user=%q userGroup=%v userAgent=%q impersonator=%q impersonatorGroup=%v srcIP=%v: %v",
+		klog.Infof("verb=%q host=%q endpoint=%q URI=%q latency=%v resp=%v user=%q userGroup=%v userAgent=%q impersonator=%q impersonatorGroup=%v srcIP=%v traceId=%v: %v",
 			verb,
 			rw.host,
 			rw.endpoint,
@@ -184,10 +186,11 @@ func (rw *responseWriterDelegator) Log() {
 			rw.impersonator.GetName(),
 			rw.impersonator.GetGroups(),
 			sourceIPs,
+			traceId,
 			rw.addedInfo,
 		)
 	} else {
-		klog.Infof("verb=%q host=%q endpoint=%q URI=%q latency=%v resp=%v user=%q userGroup=%v userAgent=%q srcIP=%v: %v",
+		klog.Infof("verb=%q host=%q endpoint=%q URI=%q latency=%v resp=%v user=%q userGroup=%v userAgent=%q srcIP=%v traceId=%v: %v",
 			verb,
 			rw.host,
 			rw.endpoint,
@@ -198,6 +201,7 @@ func (rw *responseWriterDelegator) Log() {
 			rw.user.GetGroups(),
 			rw.req.UserAgent(),
 			sourceIPs,
+			traceId,
 			rw.addedInfo,
 		)
 	}
@@ -223,7 +227,7 @@ func proxyLogPred(status int, verb string, latency time.Duration, isLongRunning 
 		return true
 	}
 
-	if !isLongRunning && latency.Seconds() > 10 {
+	if !isLongRunning && latency > gatewayrequest.LogThreshold(verb) {
 		return true
 	}
 

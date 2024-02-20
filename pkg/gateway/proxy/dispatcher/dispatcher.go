@@ -32,6 +32,7 @@ import (
 	"github.com/kubewharf/kubegateway/pkg/clusters"
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/response"
+	"github.com/kubewharf/kubegateway/pkg/util/tracing"
 )
 
 type dispatcher struct {
@@ -51,6 +52,9 @@ func NewDispatcher(clusterManager clusters.Manager, enableAccessLog bool) http.H
 // TODO: add metrics
 func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
+
+	tracing.Step(ctx, tracing.StepDispatcher)
+
 	user, ok := genericapirequest.UserFrom(ctx)
 	if !ok {
 		d.responseError(errors.NewInternalError(fmt.Errorf("no user info found in request context")), w, req, statusReasonInvalidRequestContext)
