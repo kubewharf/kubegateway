@@ -34,7 +34,7 @@ func WithExtraRequestInfo(handler http.Handler, resolver request.ExtraRequestInf
 			responsewriters.InternalError(w, req, fmt.Errorf("failed to create ExtraRequestInfo: %v", err))
 			return
 		}
-		req = req.WithContext(request.WithExtraReqeustInfo(ctx, info))
+		req = req.WithContext(request.WithExtraRequestInfo(ctx, info))
 		handler.ServeHTTP(w, req)
 	})
 }
@@ -48,11 +48,11 @@ func WithImpersonator(handler http.Handler) http.Handler {
 			handler.ServeHTTP(w, req)
 			return
 		}
-		info, ok := request.ExtraReqeustInfoFrom(ctx)
+		info, ok := request.ExtraRequestInfoFrom(ctx)
 		if ok && info.IsImpersonateRequest {
 			info.Impersonator = user
 		}
-		req = req.WithContext(request.WithExtraReqeustInfo(ctx, info))
+		req = req.WithContext(request.WithExtraRequestInfo(ctx, info))
 		handler.ServeHTTP(w, req)
 	})
 }

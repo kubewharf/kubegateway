@@ -65,7 +65,7 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		d.responseError(errors.NewInternalError(fmt.Errorf("no user info found in request context")), w, req, statusReasonInvalidRequestContext)
 		return
 	}
-	extraInfo, ok := request.ExtraReqeustInfoFrom(ctx)
+	extraInfo, ok := request.ExtraRequestInfoFrom(ctx)
 	if !ok {
 		d.responseError(errors.NewInternalError(fmt.Errorf("no extra request info found in request context")), w, req, statusReasonInvalidRequestContext)
 		return

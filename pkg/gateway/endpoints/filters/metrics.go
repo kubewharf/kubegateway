@@ -34,7 +34,7 @@ func WithPreProcessingMetrics(handler http.Handler) http.Handler {
 			responsewriters.InternalError(w, req, fmt.Errorf("failed to get request info from context"))
 			return
 		}
-		extraInfo, ok := request.ExtraReqeustInfoFrom(ctx)
+		extraInfo, ok := request.ExtraRequestInfoFrom(ctx)
 		if !ok {
 			responsewriters.InternalError(w, req, fmt.Errorf("failed to get extra request info from context"))
 			return
