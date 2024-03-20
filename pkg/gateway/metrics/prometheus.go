@@ -50,7 +50,7 @@ var (
 			Help:           "Counter of proxied apiserver requests, it is recorded when this proxied request ends",
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
-		[]string{"pid", "serverName", "endpoint", "verb", "resource", "code"},
+		[]string{"pid", "serverName", "endpoint", "verb", "resource", "code", "flowcontrol"},
 	)
 	proxyRequestLatencies = compbasemetrics.NewHistogramVec(
 		&compbasemetrics.HistogramOpts{
@@ -97,7 +97,7 @@ var (
 			Help:           "Number of requests which proxy terminated in self-defense.",
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
-		[]string{"pid", "serverName", "verb", "path", "code", "reason", "resource"},
+		[]string{"pid", "serverName", "verb", "path", "code", "reason", "resource", "flowcontrol"},
 	)
 	// proxyRegisteredWatchers is a number of currently registered watchers splitted by resource.
 	proxyRegisteredWatchers = compbasemetrics.NewGaugeVec(
@@ -162,7 +162,7 @@ func (o *proxyReceiveRequestCounterObserver) Observe(metric MetricInfo) {
 type proxyRequestCounterObserver struct{}
 
 func (o *proxyRequestCounterObserver) Observe(metric MetricInfo) {
-	proxyRequestCounter.WithLabelValues(proxyPid, metric.ServerName, metric.Endpoint, metric.Verb, metric.Resource, metric.HttpCode).Inc()
+	proxyRequestCounter.WithLabelValues(proxyPid, metric.ServerName, metric.Endpoint, metric.Verb, metric.Resource, metric.HttpCode, metric.FlowControl).Inc()
 }
 
 type proxyRequestLatenciesObserver struct{}
@@ -180,7 +180,7 @@ func (o *proxyResponseSizesObserver) Observe(metric MetricInfo) {
 type proxyRequestTerminationsObserver struct{}
 
 func (o *proxyRequestTerminationsObserver) Observe(metric MetricInfo) {
-	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, metric.ServerName, metric.Verb, metric.Path, metric.HttpCode, metric.Reason, metric.Resource).Inc()
+	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, metric.ServerName, metric.Verb, metric.Path, metric.HttpCode, metric.Reason, metric.Resource, metric.FlowControl).Inc()
 }
 
 type proxyWatcherRegisteredObserver struct{}

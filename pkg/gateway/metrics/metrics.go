@@ -88,7 +88,7 @@ func RecordProxyRequestReceived(req *http.Request, serverName string, requestInf
 
 // MonitorProxyRequest handles standard transformations for client and the reported verb and then invokes Monitor to record
 // a request. verb must be uppercase to be backwards compatible with existing monitoring tooling.
-func MonitorProxyRequest(req *http.Request, serverName, endpoint string, requestInfo *request.RequestInfo, contentType string, httpCode, respSize int, elapsed time.Duration) {
+func MonitorProxyRequest(req *http.Request, serverName, endpoint, flowControl string, requestInfo *request.RequestInfo, contentType string, httpCode, respSize int, elapsed time.Duration) {
 	if requestInfo == nil {
 		requestInfo = &request.RequestInfo{Verb: req.Method, Path: req.URL.Path}
 	}
@@ -105,21 +105,23 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint string, request
 	}
 
 	ProxyRequestCounterObservers.Observe(MetricInfo{
-		ServerName: serverName,
-		Endpoint:   endpoint,
-		Verb:       verb,
-		Resource:   resource,
-		HttpCode:   codeToString(httpCode),
-		Latency:    elapsedSeconds,
-		Request:    req,
+		ServerName:  serverName,
+		Endpoint:    endpoint,
+		FlowControl: flowControl,
+		Verb:        verb,
+		Resource:    resource,
+		HttpCode:    codeToString(httpCode),
+		Latency:     elapsedSeconds,
+		Request:     req,
 	})
 	ProxyRequestLatenciesObservers.Observe(MetricInfo{
-		ServerName: serverName,
-		Endpoint:   endpoint,
-		Verb:       verb,
-		Resource:   resource,
-		Latency:    elapsedSeconds,
-		Request:    req,
+		ServerName:  serverName,
+		Endpoint:    endpoint,
+		FlowControl: flowControl,
+		Verb:        verb,
+		Resource:    resource,
+		Latency:     elapsedSeconds,
+		Request:     req,
 	})
 
 	// We are only interested in response sizes of read requests.
@@ -140,7 +142,7 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint string, request
 // preservation or apiserver self-defense mechanism (e.g. timeouts, maxinflight throttling,
 // proxyHandler errors). RecordProxyRequestTermination should only be called zero or one times
 // per request.
-func RecordProxyRequestTermination(req *http.Request, code int, reason string) {
+func RecordProxyRequestTermination(req *http.Request, code int, reason, flowControl string) {
 	requestInfo, ok := genericapirequest.RequestInfoFrom(req.Context())
 	if !ok {
 		requestInfo = &request.RequestInfo{Verb: req.Method, Path: req.URL.Path}
@@ -160,13 +162,14 @@ func RecordProxyRequestTermination(req *http.Request, code int, reason string) {
 	resource := cleanResource(requestInfo)
 
 	ProxyRequestTerminationsObservers.Observe(MetricInfo{
-		ServerName: serverName,
-		Verb:       cleanVerb(verb, req),
-		Path:       requestInfo.Path,
-		HttpCode:   codeToString(code),
-		Reason:     reason,
-		Resource:   resource,
-		Request:    req,
+		ServerName:  serverName,
+		FlowControl: flowControl,
+		Verb:        cleanVerb(verb, req),
+		Path:        requestInfo.Path,
+		HttpCode:    codeToString(code),
+		Reason:      reason,
+		Resource:    resource,
+		Request:     req,
 	})
 }
 

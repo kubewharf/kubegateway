@@ -29,6 +29,7 @@ type MetricInfo struct {
 	IsResourceRequest bool
 	ServerName        string
 	Endpoint          string
+	FlowControl       string
 	Verb              string
 	Resource          string
 	HttpCode          string
