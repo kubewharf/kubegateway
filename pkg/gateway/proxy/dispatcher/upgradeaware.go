@@ -115,7 +115,6 @@ func (h *UpgradeAwareHandler) ServeHTTP(w http.ResponseWriter, req *http.Request
 		// if an optional error interceptor/responder was provided wire it
 		// the custom responder might be used for providing a unified error reporting
 		// or supporting retry mechanisms by not sending non-fatal errors to the clients
-		proxy.ErrorHandler = h.Responder.Error
 		proxy.ErrorHandler = h.ErrorHandler
 	}
 	proxy.ServeHTTP(w, newReq)
@@ -129,17 +128,35 @@ func (h *UpgradeAwareHandler) ErrorHandler(w http.ResponseWriter, req *http.Requ
 	}
 
 	if errors.Is(err, http.ErrAbortHandler) {
+		skipResponseErr := true
+
+		var urlHost string
+		if req.URL != nil {
+			urlHost = req.URL.Host
+		}
 		err = errors.Unwrap(err)
 		switch {
 		case errors.Is(err, context.Canceled), strings.Contains(err.Error(), "client disconnected"):
 			// ignore request canceled or client disconnected
-			klog.V(5).Infof("connection closed: remoteAddr=%v, endpoint=%v, err: %v", req.RemoteAddr, h.Location.Host, err)
-			return
+			if klog.V(5) {
+				klog.Errorf("connection disconnected: method=%q host=%q endpoint=%v remoteAddr=%v uri=%q , err: %v",
+					req.Method, net.HostWithoutPort(req.Host), urlHost, req.RemoteAddr, req.RequestURI, err)
+			}
 		case strings.Contains(err.Error(), "http2: server sent GOAWAY and closed the connection"):
-			klog.V(4).Infof("connection closed: remoteAddr=%v, endpoint=%v, err: %v", req.RemoteAddr, h.Location.Host, err)
+			// skip write response err message, otherwise client informers will relist for error ""unable to decode an event"
 			w.Header().Set("Connection", "close")
+			if klog.V(4) {
+				klog.Errorf("connection closed: method=%q host=%q endpoint=%v remoteAddr=%v uri=%q , err: %v",
+					req.Method, net.HostWithoutPort(req.Host), urlHost, req.RemoteAddr, req.RequestURI, err)
+			}
+		case strings.Contains(err.Error(), "http2: client connection lost"):
+			w.Header().Set("Connection", "close")
+			skipResponseErr = false
 		default:
-			klog.Errorf("request abort: method=%v host=%v uri=%q endpoint=%v, err: %v", req.Method, net.HostWithoutPort(req.Host), req.RequestURI, h.Location.Host, err)
+			skipResponseErr = false
+		}
+		if skipResponseErr {
+			return
 		}
 	}
 

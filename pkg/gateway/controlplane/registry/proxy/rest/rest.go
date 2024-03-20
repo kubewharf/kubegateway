@@ -25,6 +25,20 @@ import (
 
 func NewRESTStorageProvider(scheme *runtime.Scheme, factory *registry.RESTStorageOptionsFactory) (master.RESTStorageProvider, error) {
 	group := proxyv1alpha1.SchemeGroupVersion.Group
+
+	upstreamClusterOption, err := newUpstreamClusterOption(factory)
+	if err != nil {
+		return nil, err
+	}
+	rateLimitConditionOption, err := newRateLimitConditionOption(factory)
+	if err != nil {
+		return nil, err
+	}
+
+	return registry.NewRESTStorageProvider(scheme, group, upstreamClusterOption, rateLimitConditionOption), nil
+}
+
+func newUpstreamClusterOption(factory *registry.RESTStorageOptionsFactory) (registry.RESTStorageOptions, error) {
 	gvkr := runtimeschema.GroupVersionKindResource{
 		Group:    proxyv1alpha1.SchemeGroupVersion.Group,
 		Version:  proxyv1alpha1.SchemeGroupVersion.Version,
@@ -36,10 +50,27 @@ func NewRESTStorageProvider(scheme *runtime.Scheme, factory *registry.RESTStorag
 
 	options, err := factory.GetRESTStorageOptions(gvkr)
 	if err != nil {
-		return nil, err
+		return registry.RESTStorageOptions{}, err
 	}
+	options.SubStatus = true
+	return options, nil
+}
 
-	return registry.NewRESTStorageProvider(scheme, group, options), nil
+func newRateLimitConditionOption(factory *registry.RESTStorageOptionsFactory) (registry.RESTStorageOptions, error) {
+	gvkr := runtimeschema.GroupVersionKindResource{
+		Group:    proxyv1alpha1.SchemeGroupVersion.Group,
+		Version:  proxyv1alpha1.SchemeGroupVersion.Version,
+		Kind:     "RateLimitCondition",
+		Resource: "ratelimitconditions",
+	}
+	factory.SetHubGroupVersion(gvkr, gvkr.GroupVersion())
+	factory.SetRESTStrategy(gvkr, registry.NewDefaultRESTStrategy(false, false))
+
+	options, err := factory.GetRESTStorageOptions(gvkr)
+	if err != nil {
+		return registry.RESTStorageOptions{}, err
+	}
+	return options, nil
 }
 
 func NewRESTStorageProviderOrDie(scheme *runtime.Scheme, factory *registry.RESTStorageOptionsFactory) master.RESTStorageProvider {

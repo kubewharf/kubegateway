@@ -160,14 +160,16 @@ func (rw *responseWriterDelegator) MonitorAfterProxy() {
 func (rw *responseWriterDelegator) Log() {
 	latency := rw.Elapsed()
 	logging := rw.logging
-	if latency.Minutes() > 10 && !server.DefaultLongRunningFunc(rw.req, rw.requestInfo) {
+	verb := strings.ToUpper(rw.requestInfo.Verb)
+	isLongRunning := server.DefaultLongRunningFunc(rw.req, rw.requestInfo)
+	if proxyLogPred(rw.status, verb, latency, isLongRunning) {
 		logging = true
 	}
 	if !logging {
 		return
 	}
 	sourceIPs := utilnet.SourceIPs(rw.req)
-	verb := strings.ToUpper(rw.requestInfo.Verb)
+
 	if rw.impersonator != nil {
 		klog.Infof("verb=%q host=%q endpoint=%q URI=%q latency=%v resp=%v user=%q userGroup=%v userAgent=%q impersonator=%q impersonatorGroup=%v srcIP=%v: %v",
 			verb,
@@ -214,4 +216,16 @@ func (rw *responseWriterDelegator) debugf(format string, data ...interface{}) {
 
 func captureErrorOutput(code int) bool {
 	return code >= http.StatusInternalServerError
+}
+
+func proxyLogPred(status int, verb string, latency time.Duration, isLongRunning bool) bool {
+	if klog.V(5) {
+		return true
+	}
+
+	if !isLongRunning && latency.Seconds() > 10 {
+		return true
+	}
+
+	return (status < http.StatusOK || status >= http.StatusInternalServerError) && status != http.StatusSwitchingProtocols
 }

@@ -36,12 +36,26 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.ClientConfig":                         schema_pkg_apis_proxy_v1alpha1_ClientConfig(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.DispatchPolicy":                       schema_pkg_apis_proxy_v1alpha1_DispatchPolicy(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.DispatchPolicyRule":                   schema_pkg_apis_proxy_v1alpha1_DispatchPolicyRule(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.EndpointInfo":                         schema_pkg_apis_proxy_v1alpha1_EndpointInfo(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.ExemptFlowControlSchema":              schema_pkg_apis_proxy_v1alpha1_ExemptFlowControlSchema(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.FlowControl":                          schema_pkg_apis_proxy_v1alpha1_FlowControl(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.FlowControlSchema":                    schema_pkg_apis_proxy_v1alpha1_FlowControlSchema(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.FlowControlSchemaConfiguration":       schema_pkg_apis_proxy_v1alpha1_FlowControlSchemaConfiguration(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.LimitItemDetail":                      schema_pkg_apis_proxy_v1alpha1_LimitItemDetail(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.LoggingConfig":                        schema_pkg_apis_proxy_v1alpha1_LoggingConfig(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.MaxRequestsInflightFlowControlSchema": schema_pkg_apis_proxy_v1alpha1_MaxRequestsInflightFlowControlSchema(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquire":                     schema_pkg_apis_proxy_v1alpha1_RateLimitAcquire(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireRequest":              schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireRequest(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireResult":               schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireResult(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireSpec":                 schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireSpec(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireStatus":               schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireStatus(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitCondition":                   schema_pkg_apis_proxy_v1alpha1_RateLimitCondition(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitConditionList":               schema_pkg_apis_proxy_v1alpha1_RateLimitConditionList(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitItemConfiguration":           schema_pkg_apis_proxy_v1alpha1_RateLimitItemConfiguration(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitItemStatus":                  schema_pkg_apis_proxy_v1alpha1_RateLimitItemStatus(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitServerInfo":                  schema_pkg_apis_proxy_v1alpha1_RateLimitServerInfo(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitSpec":                        schema_pkg_apis_proxy_v1alpha1_RateLimitSpec(ref),
+		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitStatus":                      schema_pkg_apis_proxy_v1alpha1_RateLimitStatus(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.SecretReferecence":                    schema_pkg_apis_proxy_v1alpha1_SecretReferecence(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.SecureServing":                        schema_pkg_apis_proxy_v1alpha1_SecureServing(ref),
 		"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.ServiceAccountRef":                    schema_pkg_apis_proxy_v1alpha1_ServiceAccountRef(ref),
@@ -365,6 +379,38 @@ func schema_pkg_apis_proxy_v1alpha1_DispatchPolicyRule(ref common.ReferenceCallb
 	}
 }
 
+func schema_pkg_apis_proxy_v1alpha1_EndpointInfo(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"Leader": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"shardID": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
+						},
+					},
+					"lastHeartbeat": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.Time"),
+						},
+					},
+				},
+				Required: []string{"shardID"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/apimachinery/pkg/apis/meta/v1.Time"},
+	}
+}
+
 func schema_pkg_apis_proxy_v1alpha1_ExemptFlowControlSchema(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -433,6 +479,24 @@ func schema_pkg_apis_proxy_v1alpha1_FlowControlSchema(ref common.ReferenceCallba
 							Ref:         ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.TokenBucketFlowControlSchema"),
 						},
 					},
+					"globalMaxRequestsInflight": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GlobalMaxRequestsInflight represents a maximum global concurrent number of requests in flight at a given time.",
+							Ref:         ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.MaxRequestsInflightFlowControlSchema"),
+						},
+					},
+					"globalTokenBucket": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GlobalTokenBucket represents a global token bucket approach. The rate limiter allows bursts of up to 'burst' to exceed the QPS, while still maintaining a smoothed qps rate of 'qps'.",
+							Ref:         ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.TokenBucketFlowControlSchema"),
+						},
+					},
+					"strategy": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
 				},
 			},
 		},
@@ -466,11 +530,50 @@ func schema_pkg_apis_proxy_v1alpha1_FlowControlSchemaConfiguration(ref common.Re
 							Ref:         ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.TokenBucketFlowControlSchema"),
 						},
 					},
+					"globalMaxRequestsInflight": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GlobalMaxRequestsInflight represents a maximum global concurrent number of requests in flight at a given time.",
+							Ref:         ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.MaxRequestsInflightFlowControlSchema"),
+						},
+					},
+					"globalTokenBucket": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GlobalTokenBucket represents a global token bucket approach. The rate limiter allows bursts of up to 'burst' to exceed the QPS, while still maintaining a smoothed qps rate of 'qps'.",
+							Ref:         ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.TokenBucketFlowControlSchema"),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
 			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.ExemptFlowControlSchema", "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.MaxRequestsInflightFlowControlSchema", "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.TokenBucketFlowControlSchema"},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_LimitItemDetail(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "Represents token bucket rate limit approach.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"maxRequestsInflight": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MaxRequestsInflight represents a maximum concurrent number of requests in flight at a given time.",
+							Ref:         ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.MaxRequestsInflightFlowControlSchema"),
+						},
+					},
+					"tokenBucket": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TokenBucket represents a token bucket approach. The rate limiter allows bursts of up to 'burst' to exceed the QPS, while still maintaining a smoothed qps rate of 'qps'.",
+							Ref:         ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.TokenBucketFlowControlSchema"),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.MaxRequestsInflightFlowControlSchema", "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.TokenBucketFlowControlSchema"},
 	}
 }
 
@@ -510,6 +613,477 @@ func schema_pkg_apis_proxy_v1alpha1_MaxRequestsInflightFlowControlSchema(ref com
 				},
 			},
 		},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitAcquire(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "RateLimitAcquire represents a acquire request for a resource.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireSpec"),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireStatus"),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireSpec", "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireRequest(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"flowControl": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"tokens": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Limit tokens required of this flowcontrol",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireResult(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"flowControl": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"accept": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"boolean"},
+							Format: "",
+						},
+					},
+					"limit": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
+						},
+					},
+					"error": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+				},
+				Required: []string{"accept", "limit"},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "RateLimitAcquireSpec defines the request body for acquire",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"instance": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Rate limit client instance identity",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"requests": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Limit tokens requested",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireRequest"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireRequest"},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "RateLimitAcquireStatus defines the response body for acquire",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"results": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireResult"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitAcquireResult"},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitCondition(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "RateLimitCondition is the Schema for the upstreamclusters API",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitSpec"),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitStatus"),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitSpec", "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitStatus", "k8s.io/apimachinery/pkg/apis/meta/v1.ObjectMeta"},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitConditionList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "RateLimitConditionList contains a list of RateLimitCondition",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Ref: ref("k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitCondition"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitCondition", "k8s.io/apimachinery/pkg/apis/meta/v1.ListMeta"},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitItemConfiguration(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Schema name",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"maxRequestsInflight": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MaxRequestsInflight represents a maximum concurrent number of requests in flight at a given time.",
+							Ref:         ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.MaxRequestsInflightFlowControlSchema"),
+						},
+					},
+					"tokenBucket": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TokenBucket represents a token bucket approach. The rate limiter allows bursts of up to 'burst' to exceed the QPS, while still maintaining a smoothed qps rate of 'qps'.",
+							Ref:         ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.TokenBucketFlowControlSchema"),
+						},
+					},
+					"strategy": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.MaxRequestsInflightFlowControlSchema", "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.TokenBucketFlowControlSchema"},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitItemStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Schema name",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"maxRequestsInflight": {
+						SchemaProps: spec.SchemaProps{
+							Description: "MaxRequestsInflight represents a maximum concurrent number of requests in flight at a given time.",
+							Ref:         ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.MaxRequestsInflightFlowControlSchema"),
+						},
+					},
+					"tokenBucket": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TokenBucket represents a token bucket approach. The rate limiter allows bursts of up to 'burst' to exceed the QPS, while still maintaining a smoothed qps rate of 'qps'.",
+							Ref:         ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.TokenBucketFlowControlSchema"),
+						},
+					},
+					"requestLevel": {
+						SchemaProps: spec.SchemaProps{
+							Description: "percent of ( actual requests / limit threshold )",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.MaxRequestsInflightFlowControlSchema", "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.TokenBucketFlowControlSchema"},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitServerInfo(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"server": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"id": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"version": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"string"},
+							Format: "",
+						},
+					},
+					"shardCount": {
+						SchemaProps: spec.SchemaProps{
+							Type:   []string{"integer"},
+							Format: "int32",
+						},
+					},
+					"managedShards": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"integer"},
+										Format: "int32",
+									},
+								},
+							},
+						},
+					},
+					"endpoints": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.EndpointInfo"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.EndpointInfo"},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "RateLimitSpec defines the expect rate limit state of UpstreamCluster",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"upstreamCluster": {
+						SchemaProps: spec.SchemaProps{
+							Description: "All rate limit requests must specify a upstreamCluster.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"instance": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Rate limit client instance identity",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"limitItemConfigurations": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Client flow control settings, e.g. qps and burst",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitItemConfiguration"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitItemConfiguration"},
+	}
+}
+
+func schema_pkg_apis_proxy_v1alpha1_RateLimitStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "RateLimitStatus defines the rate limit state of UpstreamCluster",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"limitItemStatuses": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Client flow control settings, e.g. qps and burst",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Ref: ref("github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitItemStatus"),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1.RateLimitItemStatus"},
 	}
 }
 

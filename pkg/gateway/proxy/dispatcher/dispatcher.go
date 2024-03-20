@@ -176,14 +176,15 @@ func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWrite
 	}
 
 	code := int(err.Status().Code)
-	if captureErrorReason(reason) {
+	if captureErrorReason(reason) || bool(klog.V(5)) {
 		var urlHost string
 		if req.URL != nil {
 			// url.Host is different from req.Host when caller is reverse proxy.
 			// we need this host to determine which endpoint it is if possible.
 			urlHost = req.URL.Host
 		}
-		klog.Errorf("[proxy termination] method=%q host=%q uri=%q url.host=%v resp=%v reason=%q message=[%v]", req.Method, net.HostWithoutPort(req.Host), req.RequestURI, urlHost, code, reason, err.Error())
+		klog.Errorf("[proxy termination] method=%q host=%q uri=%q url.host=%v remoteAddr=%v resp=%v reason=%q message=[%v]",
+			req.Method, net.HostWithoutPort(req.Host), req.RequestURI, urlHost, req.RemoteAddr, code, reason, err.Error())
 	}
 
 	request.SetProxyTerminated(req.Context(), reason)

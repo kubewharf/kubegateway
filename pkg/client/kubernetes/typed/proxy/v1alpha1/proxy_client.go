@@ -26,12 +26,17 @@ import (
 
 type ProxyV1alpha1Interface interface {
 	RESTClient() rest.Interface
+	RateLimitConditionsGetter
 	UpstreamClustersGetter
 }
 
 // ProxyV1alpha1Client is used to interact with features provided by the proxy.kubegateway.io group.
 type ProxyV1alpha1Client struct {
 	restClient rest.Interface
+}
+
+func (c *ProxyV1alpha1Client) RateLimitConditions() RateLimitConditionInterface {
+	return newRateLimitConditions(c)
 }
 
 func (c *ProxyV1alpha1Client) UpstreamClusters() UpstreamClusterInterface {

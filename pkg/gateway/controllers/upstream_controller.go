@@ -36,6 +36,8 @@ import (
 	proxylisters "github.com/kubewharf/kubegateway/pkg/client/listers/proxy/v1alpha1"
 	"github.com/kubewharf/kubegateway/pkg/clusters"
 	gatewaynet "github.com/kubewharf/kubegateway/pkg/gateway/net"
+	proxyoptions "github.com/kubewharf/kubegateway/pkg/gateway/proxy/options"
+	"github.com/kubewharf/kubegateway/pkg/ratelimiter/clientsets"
 	"github.com/kubewharf/kubegateway/pkg/syncqueue"
 )
 
@@ -43,18 +45,32 @@ var _ dynamiccertificates.DynamicClientConfigProvider = &UpstreamClusterControll
 var _ requestx509.SNIVerifyOptionsProvider = &UpstreamClusterController{}
 
 type UpstreamClusterController struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+
 	queue  *syncqueue.SyncQueue
 	lister proxylisters.UpstreamClusterLister
 	synced cache.InformerSynced
 
+	rateLimiter string
+	clientSets  clientsets.ClientSets
+
 	clusters.Manager
 }
 
-func NewUpstreamClusterController(upstreamclusterinformer proxyinformers.UpstreamClusterInformer) *UpstreamClusterController {
+func NewUpstreamClusterController(upstreamclusterinformer proxyinformers.UpstreamClusterInformer, limiterOption *proxyoptions.RateLimiterOptions) *UpstreamClusterController {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	clientSets := clientsets.GetClientSets(ctx, limiterOption.RateLimiterService, limiterOption.Kubeconfig, limiterOption.ClientIdentityPrefix)
+
 	m := &UpstreamClusterController{
-		lister:  upstreamclusterinformer.Lister(),
-		synced:  upstreamclusterinformer.Informer().HasSynced,
-		Manager: clusters.NewManager(),
+		ctx:         ctx,
+		cancel:      cancel,
+		lister:      upstreamclusterinformer.Lister(),
+		synced:      upstreamclusterinformer.Informer().HasSynced,
+		Manager:     clusters.NewManager(),
+		rateLimiter: limiterOption.RateLimiter,
+		clientSets:  clientSets,
 	}
 	m.queue = syncqueue.NewPassthroughSyncQueue(proxyv1alpha1.SchemeGroupVersion.WithKind("UpstreamCluster"), m.syncUpstreamCluster)
 
@@ -73,6 +89,8 @@ func (m *UpstreamClusterController) Run(stopCh <-chan struct{}) {
 		m.queue.ShutDown()
 	}()
 	<-stopCh
+	m.cancel()
+	klog.Info("upstream cluster controller stopped")
 }
 
 func (m *UpstreamClusterController) syncUpstreamCluster(obj interface{}) (syncqueue.Result, error) {
@@ -96,7 +114,7 @@ func (m *UpstreamClusterController) syncUpstreamCluster(obj interface{}) (syncqu
 
 	if !ok {
 		// bootstrap
-		clusterInfo, err := clusters.CreateClusterInfo(cluster, GatewayHealthCheck)
+		clusterInfo, err := clusters.CreateClusterInfo(cluster, GatewayHealthCheck, m.rateLimiter, m.clientSets)
 		if err != nil {
 			klog.Errorf("failed to create cluster: %v, err: %v", cluster.Name, err)
 			return syncqueue.Result{RequeueAfter: 5 * time.Second, MaxRequeueTimes: 3}, nil

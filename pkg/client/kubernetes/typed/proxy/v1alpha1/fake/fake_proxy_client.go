@@ -28,6 +28,10 @@ type FakeProxyV1alpha1 struct {
 	*testing.Fake
 }
 
+func (c *FakeProxyV1alpha1) RateLimitConditions() v1alpha1.RateLimitConditionInterface {
+	return &FakeRateLimitConditions{c}
+}
+
 func (c *FakeProxyV1alpha1) UpstreamClusters() v1alpha1.UpstreamClusterInterface {
 	return &FakeUpstreamClusters{c}
 }

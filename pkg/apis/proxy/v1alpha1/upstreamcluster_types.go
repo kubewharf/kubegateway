@@ -125,6 +125,8 @@ type FlowControlSchema struct {
 	Name string `json:"name,omitempty" protobuf:"bytes,1,opt,name=name"`
 	// Schema config
 	FlowControlSchemaConfiguration `json:",inline" protobuf:"bytes,2,opt,name=flowControlSchemaConfiguration"`
+
+	Strategy LimitStrategy `json:"strategy,omitempty" protobuf:"varint,3,opt,name=strategy"`
 }
 
 // Represents the configuration of flow control schema
@@ -142,7 +144,25 @@ type FlowControlSchemaConfiguration struct {
 	// rate of 'qps'.
 	// +optianal
 	TokenBucket *TokenBucketFlowControlSchema `json:"tokenBucket,omitempty" protobuf:"bytes,3,opt,name=tokenBucket"`
+
+	// GlobalMaxRequestsInflight represents a maximum global concurrent number of requests
+	// in flight at a given time.
+	// +optianal
+	GlobalMaxRequestsInflight *MaxRequestsInflightFlowControlSchema `json:"globalMaxRequestsInflight,omitempty" protobuf:"bytes,4,opt,name=globalMaxRequestsInflight"`
+	// GlobalTokenBucket represents a global token bucket approach. The rate limiter allows bursts
+	// of up to 'burst' to exceed the QPS, while still maintaining a smoothed qps
+	// rate of 'qps'.
+	// +optianal
+	GlobalTokenBucket *TokenBucketFlowControlSchema `json:"globalTokenBucket,omitempty" protobuf:"bytes,5,opt,name=globalTokenBucket"`
 }
+
+type LimitStrategy string
+
+const (
+	LocalLimit          LimitStrategy = "local"
+	GlobalAllocateLimit LimitStrategy = "globalAllocate"
+	GlobalCountLimit    LimitStrategy = "globalCount"
+)
 
 // Represents flow control schema type
 type FlowControlSchemaType string
@@ -303,6 +323,7 @@ type UpstreamClusterStatus struct {
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:storageversion
+// +kubebuilder:resource:scope=cluster
 
 // UpstreamCluster is the Schema for the upstreamclusters API
 type UpstreamCluster struct {

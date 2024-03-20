@@ -1,0 +1,126 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.9.2
+  creationTimestamp: null
+  name: ratelimitconditions.proxy.kubegateway.io
+spec:
+  group: proxy.kubegateway.io
+  names:
+    kind: RateLimitCondition
+    listKind: RateLimitConditionList
+    plural: ratelimitconditions
+    singular: ratelimitcondition
+  scope: Cluster
+  versions:
+  - name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: RateLimitCondition is the Schema for the upstreamclusters API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: RateLimitSpec defines the expect rate limit state of UpstreamCluster
+            properties:
+              instance:
+                description: Rate limit client instance identity
+                type: string
+              limitItemConfigurations:
+                description: Client flow control settings, e.g. qps and burst
+                items:
+                  properties:
+                    maxRequestsInflight:
+                      description: MaxRequestsInflight represents a maximum concurrent
+                        number of requests in flight at a given time.
+                      properties:
+                        max:
+                          description: maximum concurrent number of requests
+                          format: int32
+                          type: integer
+                      type: object
+                    name:
+                      description: Schema name
+                      type: string
+                    strategy:
+                      type: string
+                    tokenBucket:
+                      description: TokenBucket represents a token bucket approach.
+                        The rate limiter allows bursts of up to 'burst' to exceed
+                        the QPS, while still maintaining a smoothed qps rate of 'qps'.
+                      properties:
+                        burst:
+                          description: Maximum burst for throttle. This value must
+                            be bigger than QPS if QPS is not 0
+                          format: int32
+                          type: integer
+                        qps:
+                          description: QPS indicates the maximum QPS to the master
+                            from this client. It can not be zero
+                          format: int32
+                          type: integer
+                      type: object
+                  type: object
+                type: array
+              upstreamCluster:
+                description: All rate limit requests must specify a upstreamCluster.
+                type: string
+            type: object
+          status:
+            description: RateLimitStatus defines the rate limit state of UpstreamCluster
+            properties:
+              limitItemStatuses:
+                description: Client flow control settings, e.g. qps and burst
+                items:
+                  properties:
+                    maxRequestsInflight:
+                      description: MaxRequestsInflight represents a maximum concurrent
+                        number of requests in flight at a given time.
+                      properties:
+                        max:
+                          description: maximum concurrent number of requests
+                          format: int32
+                          type: integer
+                      type: object
+                    name:
+                      description: Schema name
+                      type: string
+                    requestLevel:
+                      description: percent of ( actual requests / limit threshold
+                        )
+                      format: int32
+                      type: integer
+                    tokenBucket:
+                      description: TokenBucket represents a token bucket approach.
+                        The rate limiter allows bursts of up to 'burst' to exceed
+                        the QPS, while still maintaining a smoothed qps rate of 'qps'.
+                      properties:
+                        burst:
+                          description: Maximum burst for throttle. This value must
+                            be bigger than QPS if QPS is not 0
+                          format: int32
+                          type: integer
+                        qps:
+                          description: QPS indicates the maximum QPS to the master
+                            from this client. It can not be zero
+                          format: int32
+                          type: integer
+                      type: object
+                  type: object
+                type: array
+            type: object
+        type: object
+    served: true
+    storage: true

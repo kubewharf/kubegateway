@@ -39,7 +39,9 @@ import (
 
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	"github.com/kubewharf/kubegateway/pkg/clusters/features"
-	gatewayflowcontrol "github.com/kubewharf/kubegateway/pkg/flowcontrol"
+	gatewayflowcontrol "github.com/kubewharf/kubegateway/pkg/flowcontrols"
+	"github.com/kubewharf/kubegateway/pkg/flowcontrols/flowcontrol"
+	"github.com/kubewharf/kubegateway/pkg/ratelimiter/clientsets"
 	"github.com/kubewharf/kubegateway/pkg/transport"
 )
 
@@ -50,7 +52,7 @@ var (
 
 // EndpointPicker knows
 type EndpointPicker interface {
-	FlowControl() gatewayflowcontrol.FlowControl
+	FlowControl() flowcontrol.FlowControl
 	FlowControlName() string
 	Pop() (*EndpointInfo, error)
 	EnableLog() bool
@@ -60,7 +62,7 @@ type EndpointPicker interface {
 type endpointPickStrategy struct {
 	cluster         *ClusterInfo
 	strategy        proxyv1alpha1.Strategy
-	flowControl     gatewayflowcontrol.FlowControl
+	flowControl     flowcontrol.FlowControl
 	flowControlName string
 	upstreams       []string
 	enableLog       bool
@@ -103,7 +105,7 @@ func (s *endpointPickStrategy) EnableLog() bool {
 	return s.enableLog
 }
 
-func (s *endpointPickStrategy) FlowControl() gatewayflowcontrol.FlowControl {
+func (s *endpointPickStrategy) FlowControl() flowcontrol.FlowControl {
 	return s.flowControl
 }
 
@@ -116,6 +118,9 @@ type ClusterInfo struct {
 	// server Cluster
 	Cluster string
 
+	// global rate limiter type
+	globalRateLimiter string
+
 	// Endpoints hold all endpoint info,
 	Endpoints *EndpointInfoMap
 
@@ -123,14 +128,11 @@ type ClusterInfo struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	defaultFlowControl gatewayflowcontrol.FlowControl
-	flowcontrol        *gatewayflowcontrol.FlowControls
-	loadbalancer       sync.Map
+	flowcontrol  gatewayflowcontrol.UpstreamLimiter
+	loadbalancer sync.Map
 
 	// upstream endpoint client rest config, the host must be replaced when using it
 	restConfig *rest.Config
-	// current synced flow controler spec
-	currentFlowControlSpec atomic.Value
 	// current synced tls config for secure seving
 	currentSecureServingTLSConfig atomic.Value
 	// current dispatch policies
@@ -141,6 +143,7 @@ type ClusterInfo struct {
 
 	healthCheckIntervalSeconds time.Duration
 	endpointHeathCheck         EndpointHealthCheck
+	skipSyncEndpoints          bool
 }
 
 type secureServingConfig struct {
@@ -151,9 +154,18 @@ type secureServingConfig struct {
 }
 
 // NewEmptyClusterInfo creates a empty ClusterInfo without UpstreamCluster information such as endpoints
-func NewEmptyClusterInfo(clusterName string, config *rest.Config, healthCheck EndpointHealthCheck) *ClusterInfo {
+func NewEmptyClusterInfo(clusterName string, config *rest.Config, healthCheck EndpointHealthCheck, rateLimiter string, clientSets clientsets.ClientSets) *ClusterInfo {
 	clusterName = strings.ToLower(clusterName)
 	ctx, cancel := context.WithCancel(context.Background())
+
+	skipEndpoints := false
+	if config == nil && healthCheck == nil {
+		klog.Warningf("Skip sync endpoints")
+		skipEndpoints = true
+	}
+
+	limiter := gatewayflowcontrol.NewUpstreamLimiter(ctx, clusterName, "", clientSets)
+
 	info := &ClusterInfo{
 		ctx:                        ctx,
 		cancel:                     cancel,
@@ -161,24 +173,29 @@ func NewEmptyClusterInfo(clusterName string, config *rest.Config, healthCheck En
 		restConfig:                 config,
 		Endpoints:                  &EndpointInfoMap{data: sync.Map{}},
 		healthCheckIntervalSeconds: 5 * time.Second,
-		defaultFlowControl:         gatewayflowcontrol.DefaultFlowControl,
-		flowcontrol:                gatewayflowcontrol.NewFlowControls(),
+		globalRateLimiter:          rateLimiter,
+		flowcontrol:                limiter,
 		loadbalancer:               sync.Map{},
 		endpointHeathCheck:         healthCheck,
+		skipSyncEndpoints:          skipEndpoints,
 		featuregate:                features.DefaultMutableFeatureGate.DeepCopy(),
 	}
 	return info
 }
 
 // CreateClusterInfo try every endpoint to find a ready endpoint, and then init rest config
-func CreateClusterInfo(cluster *proxyv1alpha1.UpstreamCluster, healthCheck EndpointHealthCheck) (*ClusterInfo, error) {
+func CreateClusterInfo(cluster *proxyv1alpha1.UpstreamCluster,
+	healthCheck EndpointHealthCheck,
+	rateLimiter string,
+	clientSets clientsets.ClientSets,
+) (*ClusterInfo, error) {
 	restconfig, err := buildClusterRESTConfig(cluster)
 	if err != nil {
 		return nil, err
 	}
 
 	klog.Infof("create valid rest config for cluster: %v", cluster.Name)
-	info := NewEmptyClusterInfo(cluster.Name, restconfig, healthCheck)
+	info := NewEmptyClusterInfo(cluster.Name, restconfig, healthCheck, rateLimiter, clientSets)
 	err = info.Sync(cluster)
 	if err != nil {
 		return nil, err
@@ -235,22 +252,6 @@ func (c *ClusterInfo) loadSecureServingConfig() (secureServingConfig, bool) {
 	return *spec, true
 }
 
-func (c *ClusterInfo) loadFlowControlSpec() (proxyv1alpha1.FlowControl, bool) {
-	empty := proxyv1alpha1.FlowControl{}
-	uncastObj := c.currentFlowControlSpec.Load()
-	if uncastObj == nil {
-		return empty, false
-	}
-	spec, ok := uncastObj.(*proxyv1alpha1.FlowControl)
-	if !ok {
-		return empty, false
-	}
-	if spec == nil {
-		return empty, false
-	}
-	return *spec, true
-}
-
 func (c *ClusterInfo) loadDispatchPolicies() []proxyv1alpha1.DispatchPolicy {
 	uncastObj := c.currentDispatchPolicies.Load()
 	if uncastObj == nil {
@@ -288,8 +289,18 @@ func (c *ClusterInfo) Sync(cluster *proxyv1alpha1.UpstreamCluster) error {
 
 	klog.V(5).Infof("[cluster info] syncing cluster info, name=%q", c.Cluster)
 
+	if cluster.Annotations != nil {
+		if err := c.syncFeatureGate(cluster.Annotations); err != nil {
+			// we should never get here because there is validating admission
+			return err
+		}
+	}
+
+	// sync flow control type
+	c.flowcontrol.ResetLimiter(getFlowControlType(c.globalRateLimiter, c.featuregate))
+
 	// update flow control
-	c.syncFlowControlLocked(cluster.Spec.FlowControl)
+	c.flowcontrol.Sync(cluster.Spec.FlowControl)
 
 	// update secure serving
 	if err := c.syncSecureServingConfigLocked(cluster.Spec.SecureServing); err != nil {
@@ -301,11 +312,6 @@ func (c *ClusterInfo) Sync(cluster *proxyv1alpha1.UpstreamCluster) error {
 		return err
 	}
 
-	if err := c.syncFeatureGate(cluster.Annotations); err != nil {
-		// we should never get here because there is validating admission
-		return err
-	}
-
 	// set dispatch policies
 	c.currentDispatchPolicies.Store(cluster.Spec.DispatchPolicies)
 	c.currentLoggingConfig.Store(cluster.Spec.Logging)
@@ -314,6 +320,10 @@ func (c *ClusterInfo) Sync(cluster *proxyv1alpha1.UpstreamCluster) error {
 }
 
 func (c *ClusterInfo) syncEndpoints(servers []proxyv1alpha1.UpstreamClusterServer) error {
+	if c.skipSyncEndpoints {
+		return nil
+	}
+
 	// update endpoints
 	currentEPs := goset.NewSetFromStrings(c.AllEndpoints())
 	wantedEPs := goset.NewSet()
@@ -359,63 +369,6 @@ func (c *ClusterInfo) syncEndpoints(servers []proxyv1alpha1.UpstreamClusterServe
 	})
 
 	return syncErr
-}
-
-func (c *ClusterInfo) syncFlowControlLocked(newObj proxyv1alpha1.FlowControl) {
-	oldObj, _ := c.loadFlowControlSpec()
-	if apiequality.Semantic.DeepEqual(oldObj, newObj) {
-		return
-	}
-
-	defer func() {
-		c.currentFlowControlSpec.Store(&newObj)
-	}()
-
-	oldMap := map[string]proxyv1alpha1.FlowControlSchema{}
-
-	oldset := goset.NewSet()
-	newset := goset.NewSet()
-
-	for i, schema := range oldObj.Schemas {
-		oldset.Add(schema.Name) //nolint
-		oldMap[schema.Name] = oldObj.Schemas[i]
-	}
-
-	for _, newSchema := range newObj.Schemas {
-		newset.Add(newSchema.Name) //nolint
-		oldSchema := oldMap[newSchema.Name]
-		oldType := gatewayflowcontrol.GuessFlowControlSchemaType(oldSchema)
-		newType := gatewayflowcontrol.GuessFlowControlSchemaType(newSchema)
-		fc, ok := c.flowcontrol.Load(newSchema.Name)
-		if !ok || oldType != newType {
-			// flow control is not created or type changed
-			newFC := gatewayflowcontrol.NewFlowControl(newSchema)
-			c.flowcontrol.Store(newSchema.Name, newFC)
-			klog.Infof("[cluster info] cluster=%q ensure flowcontrol schema %v", c.Cluster, newFC.String())
-			continue
-		}
-		if ok {
-			switch newType {
-			case proxyv1alpha1.MaxRequestsInflight:
-				if fc.Resize(uint32(newSchema.MaxRequestsInflight.Max), 0) {
-					klog.Infof("[cluster info] cluster=%q resize flowcontrol schema=%q", c.Cluster, fc.String())
-				}
-			case proxyv1alpha1.TokenBucket:
-				if fc.Resize(uint32(newSchema.TokenBucket.QPS), uint32(newSchema.TokenBucket.Burst)) {
-					klog.Infof("[cluster info] cluster=%q resize flowcontrol schema=%q", c.Cluster, fc.String())
-				}
-			}
-		}
-	}
-
-	deleted := oldset.Diff(newset)
-
-	deleted.Range(func(_ int, elem interface{}) bool {
-		name := elem.(string)
-		klog.Infof("[cluster info] cluster=%q delete flowcontrol schema=%q", c.Cluster, name)
-		c.flowcontrol.Delete(name)
-		return true
-	})
 }
 
 func (c *ClusterInfo) syncSecureServingConfigLocked(newSecureServing proxyv1alpha1.SecureServing) error {
@@ -508,7 +461,7 @@ func (c *ClusterInfo) MatchAttributes(requestAttributes authorizer.Attributes) (
 	result := &endpointPickStrategy{
 		cluster:         c,
 		strategy:        policy.Strategy,
-		flowControl:     c.getFlowSchema(policy.FlowControlSchemaName),
+		flowControl:     c.GetFlowSchema(policy.FlowControlSchemaName),
 		flowControlName: flowControlName,
 		enableLog:       isLogEnabled(logging.Mode, policy.LogMode),
 	}
@@ -530,15 +483,8 @@ func (c *ClusterInfo) PickOne() (*EndpointInfo, error) {
 	return s.Pop()
 }
 
-func (c *ClusterInfo) getFlowSchema(name string) gatewayflowcontrol.FlowControl {
-	if len(name) == 0 {
-		return c.defaultFlowControl
-	}
-	load, ok := c.flowcontrol.Load(name)
-	if !ok {
-		return c.defaultFlowControl
-	}
-	return load
+func (c *ClusterInfo) GetFlowSchema(name string) flowcontrol.FlowControl {
+	return c.flowcontrol.GetOrDefault(name)
 }
 
 func (c *ClusterInfo) addOrUpdateEndpoint(endpoint string, disabled bool) error {
@@ -636,6 +582,13 @@ func isLogEnabled(upstream, policy proxyv1alpha1.LogMode) bool {
 		return true
 	}
 	return false
+}
+
+func getFlowControlType(global string, featuregate featuregate.MutableFeatureGate) string {
+	if global == flowcontrol.RemoteFlowControls && featuregate.Enabled(features.GlobalRateLimiter) {
+		return flowcontrol.RemoteFlowControls
+	}
+	return flowcontrol.LocalFlowControls
 }
 
 func unwrapUpgradeRequestRoundTripper(rt http.RoundTripper) (proxy.UpgradeRequestRoundTripper, bool) {

@@ -16,6 +16,7 @@ package validation
 
 import (
 	"crypto/tls"
+	"fmt"
 	"strings"
 
 	apimachineryvalidation "k8s.io/apimachinery/pkg/api/validation"
@@ -187,6 +188,14 @@ func ValidateFlowControl(flowcontrol *proxyv1alpha1.FlowControl, fldPath *field.
 		} else {
 			flowControlSchemaNames.Insert(fs.Name)
 		}
+
+		switch fs.Strategy {
+		case proxyv1alpha1.LocalLimit, proxyv1alpha1.GlobalAllocateLimit, proxyv1alpha1.GlobalCountLimit, "":
+		default:
+			allErrs = append(allErrs, field.Invalid(flowControlFieldPath.Index(i).Child("strategy"), fs.Strategy, fmt.Sprintf("valid value: must be of of %v",
+				[]proxyv1alpha1.LimitStrategy{proxyv1alpha1.LocalLimit, proxyv1alpha1.GlobalAllocateLimit, proxyv1alpha1.GlobalCountLimit, "\"\""})))
+		}
+
 		allErrs = append(allErrs, ValidateFlowControlConfiguration(&fs.FlowControlSchemaConfiguration, flowControlFieldPath.Index(i))...)
 	}
 
@@ -285,6 +294,17 @@ func ValidateFlowControlConfiguration(schema *proxyv1alpha1.FlowControlSchemaCon
 			}
 		}
 	}
+	if schema.GlobalMaxRequestsInflight != nil {
+		if schema.GlobalMaxRequestsInflight.Max < 0 {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("globalMaxRequestsInflight").Child("max"), schema.MaxRequestsInflight.Max, "must be bigger than or equal to 0"))
+		}
+		if schema.MaxRequestsInflight == nil {
+			allErrs = append(allErrs, field.Required(fldPath.Child("maxRequestsInflight"), "required if globalMaxRequestsInflight is specified"))
+		} else if schema.GlobalMaxRequestsInflight.Max < schema.MaxRequestsInflight.Max {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("globalMaxRequestsInflight").Child("max"), schema.MaxRequestsInflight.Max, "must be bigger than or equal to maxRequestsInflight.max"))
+		}
+	}
+
 	if schema.TokenBucket != nil {
 		if numConfig > 0 {
 			allErrs = append(allErrs, field.Forbidden(fldPath.Child("tokenBucket"), "may not specify more than 1 flow control configuration"))
@@ -293,6 +313,19 @@ func ValidateFlowControlConfiguration(schema *proxyv1alpha1.FlowControlSchemaCon
 			allErrs = append(allErrs, validateTokenBucketFlowControlSchema(schema.TokenBucket, fldPath.Child("tokenBucket"))...)
 		}
 	}
+	if schema.GlobalTokenBucket != nil {
+		if schema.GlobalTokenBucket.QPS == 0 {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("globalTokenBucket").Child("qps"), schema.GlobalTokenBucket.QPS, "must bigger than 0"))
+		}
+		if schema.TokenBucket == nil {
+			allErrs = append(allErrs, field.Required(fldPath.Child("tokenBucket"), "required if globalTokenBucket is specified"))
+		} else if schema.GlobalTokenBucket.QPS < schema.TokenBucket.QPS {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("globalTokenBucket").Child("qps"), schema.GlobalTokenBucket.QPS, "must be bigger than or equal to tokenBucket.qps"))
+		} else if schema.GlobalTokenBucket.Burst < schema.TokenBucket.Burst {
+			allErrs = append(allErrs, field.Invalid(fldPath.Child("globalTokenBucket").Child("burst"), schema.GlobalTokenBucket.Burst, "must be bigger than or equal to tokenBucket.burst"))
+		}
+	}
+
 	if numConfig == 0 {
 		allErrs = append(allErrs, field.Required(fldPath, "must specify a flow control type configuration"))
 	}

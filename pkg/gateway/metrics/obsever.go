@@ -22,6 +22,10 @@ var (
 	ProxyRequestTerminationsObservers   = newUnionObserver()
 	ProxyWatcherRegisteredObservers     = newUnionObserver()
 	ProxyWatcherUnregisteredObservers   = newUnionObserver()
+
+	ProxyRateLimiterRequestCounterObservers = newUnionObserver()
+
+	ProxyGlobalFlowControlAcquireObservers = newUnionObserver()
 )
 
 type MetricInfo struct {
@@ -37,6 +41,11 @@ type MetricInfo struct {
 	Reason            string
 	ResponseSize      float64
 	Latency           float64
+
+	Method      string
+	Result      string
+	LimitMethod string
+	Type        string
 }
 
 func newUnionObserver() UnionObserver {

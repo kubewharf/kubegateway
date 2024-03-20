@@ -16,6 +16,7 @@ package clusters
 
 import (
 	"fmt"
+	"github.com/kubewharf/kubegateway/pkg/flowcontrols/flowcontrol"
 	"testing"
 
 	"github.com/zoumo/golib/cert"
@@ -24,7 +25,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/sets"
 
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
-	"github.com/kubewharf/kubegateway/pkg/flowcontrol"
 )
 
 func createCAandCert() (serverKey []byte, serverCert []byte, caCert []byte) {
@@ -88,7 +88,7 @@ func newTestUpstreamClusterConfig() *proxyv1alpha1.UpstreamCluster {
 }
 
 func createTestClusterInfo() *ClusterInfo {
-	ret, _ := CreateClusterInfo(newTestUpstreamClusterConfig(), alwaysReadyHealthCheck)
+	ret, _ := CreateClusterInfo(newTestUpstreamClusterConfig(), alwaysReadyHealthCheck, "", nil)
 	return ret
 }
 
@@ -358,8 +358,17 @@ func TestClusterInfo_syncFlowControlLocked(t *testing.T) {
 				},
 			},
 			check: func(info *ClusterInfo) error {
-				if info.flowcontrol.Len() > 0 {
-					return fmt.Errorf("flow controls are not deleted")
+				_, ok := info.flowcontrol.Load("exempt")
+				if ok {
+					return fmt.Errorf("exempt flowcontrol are not deleted")
+				}
+				_, ok = info.flowcontrol.Load("max-inflight")
+				if ok {
+					return fmt.Errorf("max-inflight flowcontrol are not deleted")
+				}
+				_, ok = info.flowcontrol.Load("tokenbucket")
+				if ok {
+					return fmt.Errorf("tokenbucket flowcontrol are not deleted")
 				}
 				return nil
 			},
@@ -401,8 +410,8 @@ func TestClusterInfo_syncFlowControlLocked(t *testing.T) {
 	for i := range tests {
 		tt := tests[i]
 		t.Run(tt.name, func(t *testing.T) {
-			tt.args.clusterInfo.syncFlowControlLocked(tt.args.oldObj)
-			tt.args.clusterInfo.syncFlowControlLocked(tt.args.newObj)
+			tt.args.clusterInfo.flowcontrol.Sync(tt.args.oldObj)
+			tt.args.clusterInfo.flowcontrol.Sync(tt.args.newObj)
 			if tt.check != nil {
 				if err := tt.check(tt.args.clusterInfo); err != nil {
 					t.Errorf("ClusterInfo.syncFlowControlLocked() error = %v", err)

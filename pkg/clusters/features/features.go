@@ -27,6 +27,9 @@ const (
 
 	// Deny all reqeusts and make cluster temporary down
 	DenyAllRequests featuregate.Feature = "DenyAllRequests"
+
+	// GlobalRateLimiter enable remote limiter for proxy
+	GlobalRateLimiter featuregate.Feature = "GlobalRateLimiter"
 )
 
 var (
@@ -50,6 +53,7 @@ var (
 	defaultFeatureGates = map[featuregate.Feature]featuregate.FeatureSpec{
 		CloseConnectionWhenIdle: {Default: false, PreRelease: featuregate.Alpha},
 		DenyAllRequests:         {Default: false, PreRelease: featuregate.Alpha},
+		GlobalRateLimiter:       {Default: false, PreRelease: featuregate.Alpha},
 	}
 
 	defaultKnownFeatures []string

@@ -28,8 +28,8 @@ import (
 )
 
 var (
-	NamespacedStorageStrategySingleton         = NewDefaultRESTStrategy(true)
-	ClusterScopeStorageStrategySingleton       = NewDefaultRESTStrategy(false)
+	NamespacedStorageStrategySingleton         = NewDefaultRESTStrategy(true, true)
+	ClusterScopeStorageStrategySingleton       = NewDefaultRESTStrategy(false, true)
 	NamespacedStatusStorageStrategySingleton   = NewDefaultStatusRESTStrategy(true)
 	ClusterScopeStatusStorageStrategySingleton = NewDefaultStatusRESTStrategy(false)
 )
@@ -42,13 +42,15 @@ type DefaultRESTStrategy struct {
 	runtime.ObjectTyper
 	names.NameGenerator
 	namespaced bool
+	subStatus  bool
 }
 
-func NewDefaultRESTStrategy(namespaced bool) DefaultRESTStrategy {
+func NewDefaultRESTStrategy(namespaced, subStatus bool) DefaultRESTStrategy {
 	return DefaultRESTStrategy{
 		scheme.Scheme,
 		names.SimpleNameGenerator,
 		namespaced,
+		subStatus,
 	}
 }
 
@@ -87,10 +89,10 @@ func HasObjectMetaSpecStatus(obj runtime.Object) (hasMeta bool, hasSpec bool, ha
 	return
 }
 
-func (DefaultRESTStrategy) PrepareForCreate(ctx context.Context, obj runtime.Object) {
+func (s DefaultRESTStrategy) PrepareForCreate(ctx context.Context, obj runtime.Object) {
 	hasMeta, _, hasStatus := HasObjectMetaSpecStatus(obj)
 
-	if hasStatus {
+	if s.subStatus && hasStatus {
 		statusType, _ := reflect.TypeOf(obj).Elem().FieldByName("Status")
 		// clear status
 		objV := reflect.ValueOf(obj).Elem()
@@ -107,13 +109,13 @@ func (DefaultRESTStrategy) PrepareForCreate(ctx context.Context, obj runtime.Obj
 	}
 }
 
-func (DefaultRESTStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.Object) {
+func (s DefaultRESTStrategy) PrepareForUpdate(ctx context.Context, obj, old runtime.Object) {
 	hasMeta, hasSpec, hasStatus := HasObjectMetaSpecStatus(obj)
 	if !hasStatus {
 		return
 	}
 
-	if hasStatus {
+	if s.subStatus && hasStatus {
 		// Don't update the status if the resource has a Status
 		objV := reflect.ValueOf(obj).Elem()
 		oldV := reflect.ValueOf(old).Elem()
@@ -149,7 +151,7 @@ type DefaultStatusRESTStrategy struct {
 
 func NewDefaultStatusRESTStrategy(namespaced bool) DefaultStatusRESTStrategy {
 	return DefaultStatusRESTStrategy{
-		NewDefaultRESTStrategy(namespaced),
+		NewDefaultRESTStrategy(namespaced, true),
 	}
 }
 
