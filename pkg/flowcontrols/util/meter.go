@@ -25,6 +25,7 @@ type Meter struct {
 	started bool
 
 	uncounted      int64
+	counter        int64
 	currentIndex   int
 	rateAvg        float64
 	last           time.Time
@@ -101,6 +102,10 @@ func (m *Meter) AddN(n int64) {
 	m.add(n)
 }
 
+func (m *Meter) Count() int64 {
+	return atomic.LoadInt64(&m.counter)
+}
+
 func (m *Meter) StartOne() {
 	m.addInflight(1)
 	m.add(1)
@@ -121,6 +126,7 @@ func (m *Meter) addInflight(add int32) {
 
 func (m *Meter) add(add int64) {
 	atomic.AddInt64(&m.uncounted, add)
+	atomic.AddInt64(&m.counter, add)
 }
 
 func (m *Meter) rateTick() {

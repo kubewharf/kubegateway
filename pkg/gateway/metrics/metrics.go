@@ -124,15 +124,13 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint, flowControl st
 		Request:     req,
 	})
 
-	// We are only interested in response sizes of read requests.
-	// nolint:goconst
-	if requestInfo.IsResourceRequest && (verb == "GET" || verb == "LIST") {
+	if requestInfo.IsResourceRequest {
 		ProxyResponseSizesObservers.Observe(MetricInfo{
 			ServerName:   serverName,
 			Endpoint:     endpoint,
 			Verb:         verb,
 			Resource:     resource,
-			ResponseSize: float64(respSize),
+			ResponseSize: int64(respSize),
 			Request:      req,
 		})
 	}
@@ -278,5 +276,19 @@ func RecordGlobalFlowControlAcquire(serverName string, flowControlType string, l
 		LimitMethod: limitMethod,
 		FlowControl: flowControl,
 		Latency:     elapsed.Seconds(),
+	})
+}
+
+func RecordProxyRateAndInflight(rate float64, inflight int32) {
+	ProxyRequestInflightObservers.Observe(MetricInfo{
+		Rate:     rate,
+		Inflight: float64(inflight),
+	})
+}
+
+func RecordRequestThroughput(requestSizeTotal, responseSizeTotal int64) {
+	ProxyRequestThroughputObservers.Observe(MetricInfo{
+		RequestSize:  requestSizeTotal,
+		ResponseSize: responseSizeTotal,
 	})
 }

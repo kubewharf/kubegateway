@@ -19,15 +19,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"strconv"
 
 	"github.com/gobeam/stringy"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apiserver/pkg/endpoints/filters"
-	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/endpoints/responsewriter"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -36,11 +33,8 @@ import (
 	"github.com/kubewharf/kubegateway/pkg/clusters"
 	"github.com/kubewharf/kubegateway/pkg/clusters/features"
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
+	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/response"
 	"github.com/kubewharf/kubegateway/pkg/gateway/net"
-)
-
-var (
-	retryAfter = 1
 )
 
 type dispatcher struct {
@@ -108,7 +102,7 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if !flowcontrol.TryAcquire() {
 		//TODO: exempt master request and long running request
 		// add metrics
-		d.responseError(errors.NewTooManyRequests(fmt.Sprintf("too many requests for cluster(%s), limited by flowControl(%v)", extraInfo.Hostname, flowcontrol.String()), retryAfter), w, req, statusReasonRateLimited)
+		d.responseError(errors.NewTooManyRequests(fmt.Sprintf("too many requests for cluster(%s), limited by flowControl(%v)", extraInfo.Hostname, flowcontrol.String()), response.RetryAfter), w, req, statusReasonRateLimited)
 		return
 	}
 	defer flowcontrol.Release()
@@ -166,15 +160,6 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 }
 
 func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWriter, req *http.Request, reason string) {
-	gv := schema.GroupVersion{Group: "", Version: "v1"}
-
-	switch {
-	case errors.IsTooManyRequests(err), utilnet.IsProbableEOF(err):
-		w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
-	case errors.IsServiceUnavailable(err):
-		w.Header().Set("Retry-After", strconv.Itoa(retryAfter*30))
-	}
-
 	code := int(err.Status().Code)
 	if captureErrorReason(reason) || bool(klog.V(5)) {
 		var urlHost string
@@ -186,10 +171,7 @@ func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWrite
 		klog.Errorf("[proxy termination] method=%q host=%q uri=%q url.host=%v remoteAddr=%v resp=%v reason=%q message=[%v]",
 			req.Method, net.HostWithoutPort(req.Host), req.RequestURI, urlHost, req.RemoteAddr, code, reason, err.Error())
 	}
-
-	request.SetProxyTerminated(req.Context(), reason)
-
-	responsewriters.ErrorNegotiated(err, d.codecs, gv, w, req)
+	response.TerminateWithError(d.codecs, err, reason, w, req)
 }
 
 // newRequestForProxy returns a shallow copy of the original request with a context that may include a timeout for discovery requests

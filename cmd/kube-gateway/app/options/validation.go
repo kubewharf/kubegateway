@@ -37,6 +37,7 @@ func (o *ProxyOptions) Validate(controlplane *ControlPlaneServerRunOptions) []er
 	errs = append(errs, o.Authentication.Validate()...)
 	errs = append(errs, o.Authorization.Validate()...)
 	errs = append(errs, o.SecureServing.ValidateWith(*controlplane.SecureServing)...)
+	errs = append(errs, o.ServerRun.Validate()...)
 	return errs
 }
 

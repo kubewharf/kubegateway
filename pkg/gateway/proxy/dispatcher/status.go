@@ -17,6 +17,7 @@ package dispatcher
 import (
 	"net/http"
 
+	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/response"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -25,7 +26,7 @@ var (
 	statusReasonClusterNotBeingProxied   = "cluster_not_being_proxied"
 	statusReasonInvalidRequestContext    = "invalid_request_context"
 	statusReasonCircuitBreaker           = "circuit_breaker"
-	statusReasonRateLimited              = "rate_limited"
+	statusReasonRateLimited              = response.TerminationReasonRateLimited
 	statusReasonInvalidEndpoint          = "invalid_endpoint"
 	statusReasonUpgradeAwareHandlerError = "upgrade_aware_handler_error"
 	statusReasonReverseProxyError        = "reverse_proxy_error"
