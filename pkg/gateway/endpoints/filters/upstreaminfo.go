@@ -32,7 +32,7 @@ func WithUpstreamInfo(handler http.Handler, clusterManager clusters.Manager, s r
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		ctx := req.Context()
 
-		info, ok := request.ExtraReqeustInfoFrom(ctx)
+		info, ok := request.ExtraRequestInfoFrom(ctx)
 		if !ok {
 			handler.ServeHTTP(w, req)
 			return
@@ -61,7 +61,7 @@ func WithUpstreamInfo(handler http.Handler, clusterManager clusters.Manager, s r
 			}
 		}
 
-		req = req.WithContext(request.WithExtraReqeustInfo(ctx, info))
+		req = req.WithContext(request.WithExtraRequestInfo(ctx, info))
 		handler.ServeHTTP(w, req)
 	})
 }

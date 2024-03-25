@@ -22,7 +22,7 @@ import (
 
 func WithDispatcher(handler http.Handler, dispacher http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		info, ok := request.ExtraReqeustInfoFrom(req.Context())
+		info, ok := request.ExtraRequestInfoFrom(req.Context())
 		if !ok || !info.IsProxyRequest {
 			handler.ServeHTTP(w, req)
 			return

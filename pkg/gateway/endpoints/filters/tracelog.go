@@ -41,7 +41,7 @@ func WithTraceLog(handler http.Handler, enableTracing bool, longRunningRequestCh
 			return
 		}
 
-		extraInfo, ok := request.ExtraReqeustInfoFrom(ctx)
+		extraInfo, ok := request.ExtraRequestInfoFrom(ctx)
 		if !ok {
 			responsewriters.InternalError(w, req, fmt.Errorf("failed to get extra request info from context"))
 			return
