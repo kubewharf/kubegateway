@@ -1,2 +1,6 @@
 #!/bin/bash
-cp -r ${MAKE_RULES_WORKSPACE}/build/kube-ratelimiter/* "${MAKE_RULES_WORKSPACE}/output"
+
+if [[ -d "${MAKE_RULES_WORKSPACE}/build/kube-ratelimiter/" ]]; then
+  cp -r ${MAKE_RULES_WORKSPACE}/build/kube-ratelimiter/* "${MAKE_RULES_WORKSPACE}/output"
+fi
+
