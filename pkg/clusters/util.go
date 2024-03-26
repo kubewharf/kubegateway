@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
 	"time"
 
 	"k8s.io/client-go/rest"
@@ -77,6 +78,6 @@ func newRESTConfig() *rest.Config {
 		}).DialContext,
 	}
 
-	rest.AddUserAgent(cfg, "kube-gateway")
+	rest.AddUserAgent(cfg, fmt.Sprintf("kube-gateway/pid-%v", os.Getpid()))
 	return cfg
 }
