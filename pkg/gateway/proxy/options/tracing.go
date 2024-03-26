@@ -18,20 +18,20 @@ import (
 	"github.com/spf13/pflag"
 )
 
-type LoggingOptions struct {
-	EnableProxyAccessLog bool
+type TracingOptions struct {
+	EnableProxyTracing bool
 }
 
-func NewLoggingOptions() *LoggingOptions {
-	return &LoggingOptions{
-		EnableProxyAccessLog: false,
+func NewTracingOptions() *TracingOptions {
+	return &TracingOptions{
+		EnableProxyTracing: false,
 	}
 }
 
-func (o *LoggingOptions) Validate() []error {
+func (o *TracingOptions) Validate() []error {
 	return nil
 }
 
-func (o *LoggingOptions) AddFlags(fs *pflag.FlagSet) {
-	fs.BoolVar(&o.EnableProxyAccessLog, "enable-proxy-access-log", o.EnableProxyAccessLog, "Enable proxy access log")
+func (o *TracingOptions) AddFlags(fs *pflag.FlagSet) {
+	fs.BoolVar(&o.EnableProxyTracing, "enable-proxy-tracing", o.EnableProxyTracing, "Enable proxy tracing for local trace log and trace metric")
 }

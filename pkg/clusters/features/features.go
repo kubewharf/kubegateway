@@ -30,6 +30,9 @@ const (
 
 	// GlobalRateLimiter enable remote limiter for proxy
 	GlobalRateLimiter featuregate.Feature = "GlobalRateLimiter"
+
+	// Tracing enable proxy tracing for trace log and trace metric
+	Tracing featuregate.Feature = "Tracing"
 )
 
 var (
@@ -54,19 +57,18 @@ var (
 		CloseConnectionWhenIdle: {Default: false, PreRelease: featuregate.Alpha},
 		DenyAllRequests:         {Default: false, PreRelease: featuregate.Alpha},
 		GlobalRateLimiter:       {Default: false, PreRelease: featuregate.Alpha},
+		Tracing:                 {Default: false, PreRelease: featuregate.Alpha},
 	}
-
-	defaultKnownFeatures []string
 )
 
 func init() {
 	runtime.Must(DefaultMutableFeatureGate.Add(defaultFeatureGates))
-	defaultKnownFeatures = DefaultMutableFeatureGate.KnownFeatures()
 }
 
 func IsDefault(fg featuregate.FeatureGate) bool {
 	// output features is already sorted
 	inputFeatures := fg.KnownFeatures()
+	defaultKnownFeatures := DefaultMutableFeatureGate.KnownFeatures()
 	if len(defaultKnownFeatures) != len(inputFeatures) {
 		return false
 	}

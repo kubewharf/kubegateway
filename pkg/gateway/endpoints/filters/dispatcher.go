@@ -15,16 +15,15 @@
 package filters
 
 import (
-	"net"
 	"net/http"
 
-	gatewaynet "github.com/kubewharf/kubegateway/pkg/gateway/net"
+	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
 )
 
 func WithDispatcher(handler http.Handler, dispacher http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		hostname := gatewaynet.HostWithoutPort(req.Host)
-		if ip := net.ParseIP(hostname); ip != nil {
+		info, ok := request.ExtraRequestInfoFrom(req.Context())
+		if !ok || !info.IsProxyRequest {
 			handler.ServeHTTP(w, req)
 			return
 		}

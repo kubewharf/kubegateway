@@ -4,7 +4,7 @@
 
 // HTTP reverse proxy handler
 
-package httputil
+package reverseproxy
 
 import (
 	"context"
@@ -20,7 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/kubewharf/kubegateway/pkg/gateway/httputil/ascii"
+	"github.com/kubewharf/kubegateway/pkg/util/reverseproxy/ascii"
+	"github.com/kubewharf/kubegateway/pkg/util/tracing"
 	"golang.org/x/net/http/httpguts"
 )
 
@@ -92,6 +93,9 @@ type ReverseProxy struct {
 	// If nil, the default is to log the provided error and return
 	// a 502 Status Bad Gateway response.
 	ErrorHandler func(http.ResponseWriter, *http.Request, error)
+
+	proxyReadLatencyTotal  time.Duration
+	proxyWriteLatencyTotal time.Duration
 }
 
 // A BufferPool is an interface for getting and returning temporary
@@ -218,6 +222,7 @@ func (p *ReverseProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 	}
 
 	ctx := req.Context()
+
 	if cn, ok := rw.(http.CloseNotifier); ok {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithCancel(ctx)
@@ -296,11 +301,14 @@ func (p *ReverseProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 		}
 	}
 
+	tracing.Step(ctx, tracing.StepTransport)
 	res, err := transport.RoundTrip(outreq)
 	if err != nil {
+		tracing.Step(ctx, tracing.StepGotResponse)
 		p.getErrorHandler()(rw, outreq, err)
 		return
 	}
+	tracing.Step(ctx, tracing.StepGotResponse)
 
 	// Deal with 101 Switching Protocols responses: (WebSocket, h2c, etc)
 	if res.StatusCode == http.StatusSwitchingProtocols {
@@ -336,6 +344,9 @@ func (p *ReverseProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 
 	rw.WriteHeader(res.StatusCode)
 
+	tracing.Step(ctx, tracing.StepWroteResponseHeader)
+	responseStart := time.Now()
+
 	err = p.copyResponse(rw, res.Body, p.flushInterval(res))
 	if err != nil {
 		defer res.Body.Close()
@@ -358,6 +369,9 @@ func (p *ReverseProxy) ServeHTTP(rw http.ResponseWriter, req *http.Request) {
 			fl.Flush()
 		}
 	}
+
+	tracing.Step(ctx, tracing.StepReadResp, tracing.WithStepTimestamp(responseStart.Add(p.proxyReadLatencyTotal)))
+	tracing.Step(ctx, tracing.StepWroteResp)
 
 	if len(res.Trailer) == announcedTrailers {
 		copyHeader(rw.Header(), res.Trailer)
@@ -459,15 +473,19 @@ func (p *ReverseProxy) copyBuffer(dst io.Writer, src io.Reader, buf []byte) (int
 	}
 	var written int64
 	for {
+		rs := time.Now()
 		nr, rerr := src.Read(buf)
 		if rerr != nil && rerr != io.EOF && rerr != context.Canceled {
 			p.logf("httputil: ReverseProxy read error during body copy: %v", rerr)
 		}
+		p.proxyReadLatencyTotal += time.Since(rs)
 		if nr > 0 {
+			ws := time.Now()
 			nw, werr := dst.Write(buf[:nr])
 			if nw > 0 {
 				written += int64(nw)
 			}
+			p.proxyWriteLatencyTotal += time.Since(ws)
 			if werr != nil {
 				return written, werr
 			}

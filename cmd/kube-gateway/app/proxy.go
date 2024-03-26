@@ -76,6 +76,7 @@ func CreateProxyConfig(
 	// Proxy handler
 	oo := &proxyHandlerOptions{
 		clusterManager:           clusterController,
+		enableProxyTracing:       o.Tracing.EnableProxyTracing,
 		enableAccessLog:          o.Logging.EnableProxyAccessLog,
 		maxInflightThreshold:     o.ServerRun.MaxInflightThreshold,
 		maxQPSThreshold:          o.ServerRun.MaxQPSThreshold,
@@ -127,6 +128,7 @@ func buildProxyRecommenedOptions(o *options.ProxyOptions, controlplaneOptions *o
 
 type proxyHandlerOptions struct {
 	clusterManager           clusters.Manager
+	enableProxyTracing       bool
 	enableAccessLog          bool
 	maxInflightThreshold     int32
 	maxQPSThreshold          int32
@@ -159,7 +161,9 @@ func buildProxyHandlerChainFunc(o *proxyHandlerOptions) func(apiHandler http.Han
 		handler = gatewayfilters.WithRequestRate(handler, c.LongRunningFunc, rateMonitor)
 
 		handler = gatewayfilters.WithPreProcessingMetrics(handler)
-		handler = gatewayfilters.WithExtraRequestInfo(handler, &request.ExtraRequestInfoFactory{})
+		handler = gatewayfilters.WithTraceLog(handler, o.enableProxyTracing, c.LongRunningFunc)
+		handler = gatewayfilters.WithUpstreamInfo(handler, o.clusterManager, c.Serializer)
+		handler = gatewayfilters.WithExtraRequestInfo(handler, &request.ExtraRequestInfoFactory{}, c.Serializer)
 		handler = gatewayfilters.WithTerminationMetrics(handler)
 		handler = gatewayfilters.WithRequestInfo(handler, c.RequestInfoResolver)
 		if c.SecureServing != nil && !c.SecureServing.DisableHTTP2 && o.goawayChance > 0 {

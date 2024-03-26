@@ -8,6 +8,7 @@ require (
 	github.com/go-openapi/spec v0.19.3
 	github.com/gobeam/stringy v0.0.5
 	github.com/gogo/protobuf v1.3.2
+	github.com/google/uuid v1.3.1 // indirect
 	github.com/kubewharf/apiserver-runtime v0.0.0
 	github.com/libp2p/go-reuseport v0.4.0
 	github.com/pires/go-proxyproto v0.6.2
@@ -68,7 +69,6 @@ require (
 	github.com/golang/protobuf v1.3.4 // indirect
 	github.com/google/go-cmp v0.3.1 // indirect
 	github.com/google/gofuzz v1.1.0 // indirect
-	github.com/google/uuid v1.3.1 // indirect
 	github.com/googleapis/gnostic v0.3.1 // indirect
 	github.com/gophercloud/gophercloud v0.1.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect

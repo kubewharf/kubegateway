@@ -28,13 +28,11 @@ import (
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/endpoints/responsewriter"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/klog"
 
 	"github.com/kubewharf/kubegateway/pkg/clusters"
-	"github.com/kubewharf/kubegateway/pkg/clusters/features"
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/response"
-	"github.com/kubewharf/kubegateway/pkg/gateway/net"
+	"github.com/kubewharf/kubegateway/pkg/util/tracing"
 )
 
 type dispatcher struct {
@@ -54,6 +52,9 @@ func NewDispatcher(clusterManager clusters.Manager, enableAccessLog bool) http.H
 // TODO: add metrics
 func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
+
+	tracing.Step(ctx, tracing.StepDispatcher)
+
 	user, ok := genericapirequest.UserFrom(ctx)
 	if !ok {
 		d.responseError(errors.NewInternalError(fmt.Errorf("no user info found in request context")), w, req, statusReasonInvalidRequestContext)
@@ -69,19 +70,9 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		d.responseError(errors.NewInternalError(fmt.Errorf("no request info found in request context")), w, req, statusReasonInvalidRequestContext)
 		return
 	}
-	cluster, ok := d.Get(extraInfo.Hostname)
-	if !ok {
+	cluster := extraInfo.UpstreamCluster
+	if extraInfo.IsProxyRequest && cluster == nil {
 		d.responseError(errors.NewServiceUnavailable(fmt.Sprintf("the request cluster(%s) is not being proxied", extraInfo.Hostname)), w, req, statusReasonClusterNotBeingProxied)
-		return
-	}
-
-	if cluster.FeatureEnabled(features.CloseConnectionWhenIdle) {
-		// Send a GOAWAY and tear down the TCP connection when idle.
-		w.Header().Set("Connection", "close")
-	}
-
-	if cluster.FeatureEnabled(features.DenyAllRequests) {
-		d.responseError(errors.NewServiceUnavailable(fmt.Sprintf("request for %v denied by featureGate(DenyAllRequests)", extraInfo.Hostname)), w, req, statusReasonCircuitBreaker)
 		return
 	}
 
@@ -154,24 +145,14 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	defer delegate.MonitorAfterProxy()
 
 	rw := responsewriter.WrapForHTTP1Or2(delegate)
+	responder := newErrorResponder(d.codecs, endpoint, requestInfo, delegate)
 
-	proxyHandler := NewUpgradeAwareHandler(location, endpoint.ProxyTransport, endpoint.PorxyUpgradeTransport, false, false, d, endpoint)
+	proxyHandler := NewUpgradeAwareHandler(location, endpoint.ProxyTransport, endpoint.PorxyUpgradeTransport, false, false, responder)
 	proxyHandler.ServeHTTP(rw, newReq)
 }
 
 func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWriter, req *http.Request, reason string) {
-	code := int(err.Status().Code)
-	if captureErrorReason(reason) || bool(klog.V(5)) {
-		var urlHost string
-		if req.URL != nil {
-			// url.Host is different from req.Host when caller is reverse proxy.
-			// we need this host to determine which endpoint it is if possible.
-			urlHost = req.URL.Host
-		}
-		klog.Errorf("[proxy termination] method=%q host=%q uri=%q url.host=%v remoteAddr=%v resp=%v reason=%q message=[%v]",
-			req.Method, net.HostWithoutPort(req.Host), req.RequestURI, urlHost, req.RemoteAddr, code, reason, err.Error())
-	}
-	response.TerminateWithError(d.codecs, err, reason, w, req)
+	responseError(d.codecs, err, w, req, reason)
 }
 
 // newRequestForProxy returns a shallow copy of the original request with a context that may include a timeout for discovery requests
@@ -185,16 +166,6 @@ func newRequestForProxy(location *url.URL, req *http.Request, _ string) (*http.R
 	newReq.URL = location
 
 	return newReq, cancel
-}
-
-// implements k8s.io/apimachinery/pkg/util/proxy.ErrorResponder interface
-func (d *dispatcher) Error(w http.ResponseWriter, req *http.Request, err error) {
-	status := errorToProxyStatus(err)
-	reason := statusReasonUpgradeAwareHandlerError
-	if status.Code == http.StatusBadGateway {
-		reason = statusReasonReverseProxyError
-	}
-	d.responseError(&errors.StatusError{ErrStatus: *status}, w, req, reason)
 }
 
 func normalizeErrToReason(err error) string {
