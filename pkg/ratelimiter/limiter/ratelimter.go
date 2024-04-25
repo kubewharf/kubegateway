@@ -126,14 +126,17 @@ func (r *rateLimiter) UpdateRateLimitConditionStatus(upstream string, condition 
 		return nil, fmt.Errorf("limit store for upstream %s upstream shard %v not found", upstream, shardId)
 	}
 
-	mutex := r.upstreamLock[condition.Spec.UpstreamCluster]
-	mutex.Lock()
-	defer mutex.Unlock()
-
 	upstreamCondition, err := limitStore.Get(condition.Spec.UpstreamCluster, upstreamStateConditionName(condition.Spec.UpstreamCluster))
 	if err != nil {
 		return nil, err
 	}
+
+	mutex := r.upstreamLock[condition.Spec.UpstreamCluster]
+	if mutex == nil {
+		return nil, fmt.Errorf("interval error: upstreamLock not exist")
+	}
+	mutex.Lock()
+	defer mutex.Unlock()
 
 	oldCondition, err := limitStore.Get(condition.Spec.UpstreamCluster, condition.Name)
 	if errors.IsNotFound(err) {
@@ -253,12 +256,12 @@ func (r *rateLimiter) DoAcquire(upstream string, acquireRequest *proxyv1alpha1.R
 				}
 				metrics.MonitorAcquiredTokenCounter(upstream, acquireRequest.Spec.Instance, limit.FlowControl, string(flowControl.Type()), string(proxyv1alpha1.GlobalCountLimit), "acquire", rs.Limit)
 			case proxyv1alpha1.MaxRequestsInflight:
-				threshold, err := flowControl.SetState(acquireRequest.Spec.Instance, acquireRequest.Spec.RequestID, limit.Tokens)
+				accept, threshold, err := flowControl.SetState(acquireRequest.Spec.Instance, acquireRequest.Spec.RequestID, limit.Tokens)
 				switch {
 				case err != nil:
 					rs.Accept = false
 					rs.Error = err.Error()
-				case threshold < 0:
+				case accept:
 					rs.Accept = true
 					rs.Limit = limit.Tokens
 				default:
@@ -276,7 +279,9 @@ func (r *rateLimiter) DoAcquire(upstream string, acquireRequest *proxyv1alpha1.R
 		if err != nil {
 			rs.Accept = false
 			rs.Error = err.Error()
-			rslog = fmt.Sprintf("[name=%q token=%v result=%v error=%v]", limit.FlowControl, limit.Tokens, rs.Accept, rs.Error)
+		}
+		if len(rs.Error) > 0 {
+			rslog = fmt.Sprintf("[name=%q token=%v result=%v (%v) error=%v]", limit.FlowControl, limit.Tokens, rs.Accept, rs.Limit, rs.Error)
 		} else {
 			rslog = fmt.Sprintf("[name=%q token=%v result=%v (%v)]", limit.FlowControl, limit.Tokens, rs.Accept, rs.Limit)
 		}

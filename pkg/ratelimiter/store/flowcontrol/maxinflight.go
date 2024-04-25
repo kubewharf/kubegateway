@@ -63,7 +63,7 @@ func (f *globalMaxInflight) add(n int32) int32 {
 	return count - max
 }
 
-func (f *globalMaxInflight) SetState(instance string, requestId int64, current int32) (int32, error) {
+func (f *globalMaxInflight) SetState(instance string, requestId int64, current int32) (bool, int32, error) {
 	f.lock.RLock()
 	state, ok := f.instanceStates[instance]
 	f.lock.RUnlock()
@@ -72,26 +72,30 @@ func (f *globalMaxInflight) SetState(instance string, requestId int64, current i
 		if ok {
 			f.lock.Lock()
 			delete(f.instanceStates, instance)
+			f.add(-state.count)
 			f.lock.Unlock()
 			current = 0
 		}
-		return -1, nil
+		return false, -1, nil
 	} else if !ok || state == nil {
 		f.lock.Lock()
-		state = &instanceState{}
-		f.instanceStates[instance] = state
+		state, ok = f.instanceStates[instance]
+		if !ok || state == nil {
+			state = &instanceState{}
+			f.instanceStates[instance] = state
+		}
 		f.lock.Unlock()
 	}
 
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
 	if requestId > 0 {
-		f.lock.RLock()
 		oldId := atomic.LoadInt64(&state.requestId)
 		if requestId <= oldId {
-			f.lock.RUnlock()
-			return -1, RequestIDTooOld
+			return false, current, RequestIDTooOld
 		}
 		atomic.StoreInt64(&state.requestId, requestId)
-		f.lock.RUnlock()
 	}
 
 	old := atomic.SwapInt32(&state.count, current)
@@ -101,12 +105,12 @@ func (f *globalMaxInflight) SetState(instance string, requestId int64, current i
 	if overflowed > 0 {
 		atomic.AddInt32(&state.count, -delta)
 		f.add(-delta)
-		return old, nil
+		return false, old, nil
 	}
 	if overflowed == 0 && current > 0 {
-		return current, nil
+		return false, current, nil
 	}
-	return -1, nil
+	return true, current, nil
 }
 
 func (f *globalMaxInflight) overflow() int32 {
