@@ -1,10 +1,13 @@
 package limiter
 
 import (
+	"math"
+	mathrand "math/rand"
+
+	"k8s.io/klog"
+
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	"github.com/kubewharf/kubegateway/pkg/flowcontrols/flowcontrol"
-	"k8s.io/klog"
-	"math"
 )
 
 const (
@@ -160,9 +163,14 @@ func calculateNextQuota(
 	}
 	burst = math.Ceil(burst)
 
-	klog.V(2).Infof("[allocate] fc=%s, total=%v, allocated=%v, totalReq=%v%%, last=%v, used=%v (%v%%), next=%v, threshold=(%v, %v), level(expect: %v, allocate: %v), name=%s",
-		flowControlConfig.Name, total, allocated, upstreamUsed.RequestLevel, current, used, flowControlStatus.RequestLevel, next,
-		reducingThreshold, increasingThreshold, expectTotalLevel, expectedAllocatePercent, condition.Name)
+	// log_level >= 3：always logging
+	// log_level  = 2: probabilistic logging
+	// log_level <= 1: do not logging
+	if klog.V(3) || mathrand.Float64() < AllocateLogProbability {
+		klog.V(2).Infof("[allocate] fc=%s, total=%v, allocated=%v, totalReq=%v%%, last=%v, used=%v (%v%%), next=%v, threshold=(%v, %v), level(expect: %v, allocate: %v), name=%s",
+			flowControlConfig.Name, total, allocated, upstreamUsed.RequestLevel, current, used, flowControlStatus.RequestLevel, next,
+			reducingThreshold, increasingThreshold, expectTotalLevel, expectedAllocatePercent, condition.Name)
+	}
 
 	setFlowControlLimit(&newCondition.LimitItemDetail, flowControlType, next, burst)
 

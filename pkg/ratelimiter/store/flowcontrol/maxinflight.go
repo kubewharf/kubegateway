@@ -2,6 +2,7 @@ package flowcontrol
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -117,4 +118,19 @@ func (f *globalMaxInflight) overflow() int32 {
 	max := atomic.LoadInt32(&f.max)
 	count := atomic.LoadInt32(&f.count)
 	return count - max
+}
+
+func (f *globalMaxInflight) DebugInfo() string {
+	var msgs []string
+	var total int32
+	f.lock.RLock()
+	for instance, state := range f.instanceStates {
+		msgs = append(msgs, fmt.Sprintf("[%s: %v]", instance, state.count))
+		total += state.count
+	}
+	f.lock.RUnlock()
+	count := atomic.LoadInt32(&f.count)
+	max := atomic.LoadInt32(&f.max)
+	info := fmt.Sprintf("name=%s max=%v count=%v total=%v details=%v", f.name, max, count, total, strings.Join(msgs, ","))
+	return info
 }

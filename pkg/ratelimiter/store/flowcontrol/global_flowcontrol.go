@@ -16,6 +16,7 @@ type GlobalFlowControl interface {
 	String() string
 	Resize(n int32, burst int32) bool
 	Type() proxyv1alpha1.FlowControlSchemaType
+	DebugInfo() string
 }
 
 func NewGlobalFlowControl(schema proxyv1alpha1.FlowControlSchema) GlobalFlowControl {

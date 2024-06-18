@@ -3,6 +3,8 @@ package limiter
 import (
 	"context"
 	"fmt"
+	mathrand "math/rand"
+	"os"
 	"sort"
 	"strings"
 	"sync"
@@ -35,6 +37,20 @@ const (
 
 	RateLimitConditionInstanceLabel = "proxy.kubegateway.io/ratelimitcondition.instance"
 )
+
+var (
+	AcquireLogProbability  = 0.1
+	AllocateLogProbability = 0.2
+
+	EnableAcquireDebugLog = false
+)
+
+func init() {
+	if os.Getenv("ENABLE_ACQUIRE_DEBUG_LOG") == "true" {
+		klog.Infof("Enable acquire debug log")
+		EnableAcquireDebugLog = true
+	}
+}
 
 func NewRateLimiter(gatewayClient gatewayclientset.Interface, client kubernetes.Interface, limitOptions options.RateLimitOptions) (RateLimiter, error) {
 	leaderElector, err := elector.NewLeaderElector(limitOptions.LeaderElectionConfiguration, client, limitOptions.Identity, limitOptions.ShardingCount)
@@ -225,6 +241,8 @@ func (r *rateLimiter) DoAcquire(upstream string, acquireRequest *proxyv1alpha1.R
 	}
 
 	var resultLogs []string
+	var logging bool
+
 	result := &acquireRequest.Status
 	for _, limit := range acquireRequest.Spec.Requests {
 		rs, err := func() (proxyv1alpha1.RateLimitAcquireResult, error) {
@@ -272,6 +290,14 @@ func (r *rateLimiter) DoAcquire(upstream string, acquireRequest *proxyv1alpha1.R
 				metrics.MonitorAllocateRequest(upstream, acquireRequest.Spec.Instance, limit.FlowControl, string(flowControl.Type()), string(proxyv1alpha1.GlobalCountLimit), "acquire", rs.Limit)
 			}
 
+			if !rs.Accept && EnableAcquireDebugLog {
+				logging = true
+				if info := flowControl.DebugInfo(); len(info) > 0 {
+					klog.V(2).Infof("[acquire][debug] upstream=%q instance=%q name=%q token=%v limit=%v (%v) err=%q, debugInfo: %q",
+						upstream, acquireRequest.Spec.Instance, limit.FlowControl, limit.Tokens, rs.Limit, rs.Accept, rs.Error, info)
+				}
+			}
+
 			return rs, nil
 		}()
 
@@ -281,6 +307,7 @@ func (r *rateLimiter) DoAcquire(upstream string, acquireRequest *proxyv1alpha1.R
 			rs.Error = err.Error()
 		}
 		if len(rs.Error) > 0 {
+			logging = true
 			rslog = fmt.Sprintf("[name=%q token=%v result=%v (%v) error=%v]", limit.FlowControl, limit.Tokens, rs.Accept, rs.Limit, rs.Error)
 		} else {
 			rslog = fmt.Sprintf("[name=%q token=%v result=%v (%v)]", limit.FlowControl, limit.Tokens, rs.Accept, rs.Limit)
@@ -290,7 +317,12 @@ func (r *rateLimiter) DoAcquire(upstream string, acquireRequest *proxyv1alpha1.R
 		result.Results = append(result.Results, rs)
 	}
 
-	klog.V(2).Infof("[acquire] upstream=%q instance=%q: %v", upstream, acquireRequest.Spec.Instance, strings.Join(resultLogs, ","))
+	// log_level >= 4 or has error: always logging
+	// log_level = 2,3: probabilistic logging
+	// log_level <= 1: do not logging
+	if logging || bool(klog.V(4)) || mathrand.Float64() < AcquireLogProbability {
+		klog.V(2).Infof("[acquire] upstream=%q instance=%q id=%v: %v", upstream, acquireRequest.Spec.Instance, acquireRequest.Spec.RequestID, strings.Join(resultLogs, ","))
+	}
 
 	return acquireRequest, nil
 }
@@ -521,13 +553,14 @@ func (r *rateLimiter) cleanupTimeoutClient() {
 		if time.Now().After(lastHeartbeat.Add(ClientHeartBeatTimeout)) {
 			r.clientCache.Delete(c)
 			instance := c
+			reason := fmt.Sprintf("instance %s last heartbeat since %v", instance, lastHeartbeat.Format(time.RFC3339Nano))
 			go func() {
 				for _, limitStore := range r.limitStoreMap {
 					conditions := limitStore.List(labels.Set{RateLimitConditionInstanceLabel: instance}.AsSelector())
 					for _, condition := range conditions {
-						r.deleteCondition(limitStore, condition, true)
+						r.deleteCondition(limitStore, condition, reason)
 					}
-					r.deleteGlobalFlowControl(limitStore, instance)
+					r.deleteGlobalFlowControl(limitStore, instance, reason)
 				}
 			}()
 		}
@@ -567,7 +600,7 @@ func (r *rateLimiter) cleanupUnknownCondition() {
 			}
 
 			if len(condition.Spec.Instance) > 0 {
-				r.deleteCondition(limitStore, condition, false)
+				r.deleteCondition(limitStore, condition, fmt.Sprintf("client %s not exist", condition.Spec.Instance))
 				clientsToDelete[condition.Spec.Instance] = true
 			}
 
@@ -579,7 +612,7 @@ func (r *rateLimiter) cleanupUnknownCondition() {
 
 	for instance, _ := range clientsToDelete {
 		for _, limitStore := range r.limitStoreMap {
-			r.deleteGlobalFlowControl(limitStore, instance)
+			r.deleteGlobalFlowControl(limitStore, instance, fmt.Sprintf("client %s not exist", instance))
 		}
 	}
 
@@ -593,24 +626,23 @@ func (r *rateLimiter) cleanupUnknownCondition() {
 	}
 }
 
-func (r *rateLimiter) deleteCondition(limitStore _interface.LimitStore, condition *proxyv1alpha1.RateLimitCondition, logForSkip bool) {
+func (r *rateLimiter) deleteCondition(limitStore _interface.LimitStore, condition *proxyv1alpha1.RateLimitCondition, reason string) {
 	upstream := condition.Spec.UpstreamCluster
 	shardId := util.GetShardID(upstream, r.shardCount)
 	if !r.leaderElector.IsLeader(shardId) || len(condition.Spec.Instance) == 0 {
-		if logForSkip {
-			klog.Errorf("Skip delete condition %s, leader of (upstream %s, shard %v) is %v", condition.Name, upstream, shardId, r.leaderElector.GetLeaders()[shardId])
-		}
+		klog.Errorf("Skip delete condition %s, leader of (upstream %s, shard %v) is %v", condition.Name, upstream, shardId, r.leaderElector.GetLeaders()[shardId])
 		return
 	}
 
-	klog.Infof("Clean up condition %v for unknown client %v", condition.Name, condition.Spec.Instance)
+	klog.Infof("Clean up condition %v for unknown client %v: %v", condition.Name, condition.Spec.Instance, reason)
 	err := limitStore.Delete(upstream, condition.Name)
 	if err != nil {
 		klog.Errorf("Delete error: %v", err)
 	}
 }
 
-func (r *rateLimiter) deleteGlobalFlowControl(limitStore _interface.LimitStore, instance string) {
+func (r *rateLimiter) deleteGlobalFlowControl(limitStore _interface.LimitStore, instance string, reason string) {
+	klog.Infof("Clean up flowcontrol state for unknown client %v: %v", instance, reason)
 	limitStore.DeleteInstanceState(instance)
 }
 
