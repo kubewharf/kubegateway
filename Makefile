@@ -37,6 +37,7 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+MYBUILD="hack/make-rules/build.sh"
 
 define command_exists
 	@$(shell command -v $(1) >/dev/null 2>&1)
@@ -81,7 +82,7 @@ all build:
 	@echo "$$ALL_HELP_INFO"
 else
 all build: make-rules
-	@$(MYMAKE) go build --version="$(VERSION)" --v="$(VERBOSE)" $(WHAT)
+	@$(MYBUILD) $(WHAT)
 endif 
 
 define GO_BUILD_HELP_INFO
@@ -106,7 +107,7 @@ $(GO_BUILD_TARGETS):
 	$(call GO_BUILD_HELP_INFO, $@)
 else
 $(GO_BUILD_TARGETS): make-rules
-	@$(MYMAKE) go build --version="$(VERSION)" --v="$(VERBOSE)" $@
+	@$(MYBUILD) $@
 endif 
 
 define UNITTEST_HELP_INFO
@@ -161,7 +162,7 @@ build-local:
 	@echo "$$BUILD_LOCAL_HELP_INFO"
 else
 build-local: make-rules
-	@$(MYMAKE) go build --version="$(VERSION)" --v="$(VERBOSE)" $(WHAT)
+	@$(MYBUILD) $(WHAT)
 endif 
 
 define BUILD_IN_CONTAINER_HELP_INFO
@@ -190,7 +191,7 @@ build-in-container:
 	@echo "$$BUILD_LINUX_HELP_INFO"
 else
 build-in-container: make-rules
-	@$(MYMAKE) go build --version="$(VERSION)" --v="$(VERBOSE)" $(WHAT) 
+	@$(MYBUILD) $(WHAT)
 endif 
 
 define CONTAINER_HELP_INFO
