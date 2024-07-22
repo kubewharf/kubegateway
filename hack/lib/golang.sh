@@ -104,13 +104,28 @@ kube::golang::build_binaries() {
             fi
 
             # build
-            build_args=(
-              ${GOFLAGS[@]:-}
-              -gcflags "${GOGCFLAGS:-}"
-              -asmflags "${GOASMFLAGS:-}"
-              -ldflags "${GOLDFLAGS:-}"
-              -tags "${GOTAGS:-}"
-            )
+            build_args=()
+
+            if [ -n "${GOFLAGS:-}" ]; then
+              build_args+=("${GOFLAGS[@]}")
+            fi
+
+            if [ -n "${GOGCFLAGS:-}" ]; then
+              build_args+=(-gcflags "${GOGCFLAGS}")
+            fi
+
+            if [ -n "${GOASMFLAGS:-}" ]; then
+              build_args+=(-asmflags "${GOASMFLAGS}")
+            fi
+
+            if [ -n "${GOLDFLAGS:-}" ]; then
+              build_args+=(-ldflags "${GOLDFLAGS}")
+            fi
+
+            if [ -n "${GOTAGS:-}" ]; then
+              build_args+=(-tags "${GOTAGS}")
+            fi
+
             go_build_args="${build_args[@]}"
 
             bin=${target##*/}
