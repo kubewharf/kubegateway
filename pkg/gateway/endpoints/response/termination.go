@@ -28,7 +28,7 @@ import (
 
 const (
 	RetryAfter            = 1
-	UnavailableRetryAfter = 30
+	UnavailableRetryAfter = 60
 
 	TerminationReasonRateLimited = "rate_limited"
 
@@ -38,7 +38,10 @@ const (
 
 func TerminateWithError(codecs runtime.NegotiatedSerializer, err *errors.StatusError, reason string, w http.ResponseWriter, req *http.Request) {
 	if errors.IsTooManyRequests(err) {
-		w.Header().Set("Retry-After", strconv.Itoa(RetryAfter))
+		retryAfter, ok := errors.SuggestsClientDelay(err)
+		if ok {
+			w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+		}
 	} else if errors.IsServiceUnavailable(err) {
 		w.Header().Set("Retry-After", strconv.Itoa(UnavailableRetryAfter))
 	}

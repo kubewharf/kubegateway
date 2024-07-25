@@ -93,7 +93,11 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if !flowcontrol.TryAcquire() {
 		//TODO: exempt master request and long running request
 		// add metrics
-		d.responseError(errors.NewTooManyRequests(fmt.Sprintf("too many requests for cluster(%s), limited by flowControl(%v)", extraInfo.Hostname, flowcontrol.String()), response.RetryAfter), w, req, statusReasonRateLimited)
+		retryAfter := 0
+		if requestAttributes.GetResource() != "events" {
+			retryAfter = response.RetryAfter
+		}
+		d.responseError(errors.NewTooManyRequests(fmt.Sprintf("too many requests for cluster(%s), limited by flowControl(%v)", extraInfo.Hostname, flowcontrol.String()), retryAfter), w, req, statusReasonRateLimited)
 		return
 	}
 	defer flowcontrol.Release()
