@@ -18,7 +18,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/zoumo/golib v0.0.0-20211216092524-c9bb48ad7bef
 	github.com/zoumo/goset v0.2.0
-	golang.org/x/net v0.0.0-20211101194204-95aca89e93de
+	golang.org/x/net v0.0.0-20211209124913-491a49abca63
 	golang.org/x/time v0.0.0-20190308202827-9d24e82272b4
 	google.golang.org/appengine v1.6.5 // indirect
 	k8s.io/api v0.18.10
@@ -136,6 +136,7 @@ replace (
 	github.com/pkg/errors => github.com/pkg/errors v0.9.1
 	github.com/tmc/grpc-websocket-proxy => github.com/tmc/grpc-websocket-proxy v0.0.0-20170815181823-89b8d40f7ca8
 	go.uber.org/atomic => go.uber.org/atomic v1.3.2
+	golang.org/x/net => golang.org/x/net v0.0.0-20211209124913-491a49abca63
 	golang.org/x/sys => golang.org/x/sys v0.0.0-20190813064441-fde4db37ae7a
 	golang.org/x/tools => golang.org/x/tools v0.0.0-20190821162956-65e3620a7ae7
 	golang.org/x/xerrors => golang.org/x/xerrors v0.0.0-20190717185122-a985d3407aa7
