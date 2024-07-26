@@ -16,7 +16,7 @@
 
 function resolve_platform() {
     local platforms=(${MAKE_RULES_GO_BUILD_PLATFORMS[@]})
-    local platform="linux/amd64"
+    local platform="$(go env GOHOSTOS)/$(go env GOHOSTARCH)"
     if [[ ${#platforms[@]} -ge 1 ]]; then
         platform="${platforms[0]}"
     fi
