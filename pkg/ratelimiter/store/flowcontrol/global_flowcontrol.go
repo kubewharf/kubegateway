@@ -12,10 +12,11 @@ var (
 
 type GlobalFlowControl interface {
 	TryAcquireN(instance string, token int32) bool
-	SetState(instance string, requestId int64, current int32) (int32, error)
+	SetState(instance string, requestId int64, current int32) (accept bool, latest int32, err error)
 	String() string
 	Resize(n int32, burst int32) bool
 	Type() proxyv1alpha1.FlowControlSchemaType
+	DebugInfo() string
 }
 
 func NewGlobalFlowControl(schema proxyv1alpha1.FlowControlSchema) GlobalFlowControl {

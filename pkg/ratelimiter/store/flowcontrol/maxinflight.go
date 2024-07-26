@@ -2,6 +2,7 @@ package flowcontrol
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -63,7 +64,7 @@ func (f *globalMaxInflight) add(n int32) int32 {
 	return count - max
 }
 
-func (f *globalMaxInflight) SetState(instance string, requestId int64, current int32) (int32, error) {
+func (f *globalMaxInflight) SetState(instance string, requestId int64, current int32) (bool, int32, error) {
 	f.lock.RLock()
 	state, ok := f.instanceStates[instance]
 	f.lock.RUnlock()
@@ -72,26 +73,30 @@ func (f *globalMaxInflight) SetState(instance string, requestId int64, current i
 		if ok {
 			f.lock.Lock()
 			delete(f.instanceStates, instance)
+			f.add(-state.count)
 			f.lock.Unlock()
 			current = 0
 		}
-		return -1, nil
+		return false, -1, nil
 	} else if !ok || state == nil {
 		f.lock.Lock()
-		state = &instanceState{}
-		f.instanceStates[instance] = state
+		state, ok = f.instanceStates[instance]
+		if !ok || state == nil {
+			state = &instanceState{}
+			f.instanceStates[instance] = state
+		}
 		f.lock.Unlock()
 	}
 
+	f.lock.RLock()
+	defer f.lock.RUnlock()
+
 	if requestId > 0 {
-		f.lock.RLock()
 		oldId := atomic.LoadInt64(&state.requestId)
 		if requestId <= oldId {
-			f.lock.RUnlock()
-			return -1, RequestIDTooOld
+			return false, current, RequestIDTooOld
 		}
 		atomic.StoreInt64(&state.requestId, requestId)
-		f.lock.RUnlock()
 	}
 
 	old := atomic.SwapInt32(&state.count, current)
@@ -101,16 +106,31 @@ func (f *globalMaxInflight) SetState(instance string, requestId int64, current i
 	if overflowed > 0 {
 		atomic.AddInt32(&state.count, -delta)
 		f.add(-delta)
-		return old, nil
+		return false, old, nil
 	}
 	if overflowed == 0 && current > 0 {
-		return current, nil
+		return false, current, nil
 	}
-	return -1, nil
+	return true, current, nil
 }
 
 func (f *globalMaxInflight) overflow() int32 {
 	max := atomic.LoadInt32(&f.max)
 	count := atomic.LoadInt32(&f.count)
 	return count - max
+}
+
+func (f *globalMaxInflight) DebugInfo() string {
+	var msgs []string
+	var total int32
+	f.lock.RLock()
+	for instance, state := range f.instanceStates {
+		msgs = append(msgs, fmt.Sprintf("[%s: %v]", instance, state.count))
+		total += state.count
+	}
+	f.lock.RUnlock()
+	count := atomic.LoadInt32(&f.count)
+	max := atomic.LoadInt32(&f.max)
+	info := fmt.Sprintf("name=%s max=%v count=%v total=%v details=%v", f.name, max, count, total, strings.Join(msgs, ","))
+	return info
 }

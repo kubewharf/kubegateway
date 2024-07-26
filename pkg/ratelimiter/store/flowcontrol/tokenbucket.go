@@ -53,6 +53,10 @@ func (f *globalTokenBucket) Resize(n int32, burst int32) bool {
 	return resized
 }
 
-func (f *globalTokenBucket) SetState(instance string, requestId int64, current int32) (int32, error) {
-	return -1, nil
+func (f *globalTokenBucket) SetState(instance string, requestId int64, current int32) (bool, int32, error) {
+	return false, -1, nil
+}
+
+func (f *globalTokenBucket) DebugInfo() string {
+	return ""
 }
