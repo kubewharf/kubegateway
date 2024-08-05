@@ -98,7 +98,7 @@ var (
 			Help:           "Number of requests which proxy terminated in self-defense.",
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
-		[]string{"pid", "serverName", "verb", "path", "code", "reason", "resource", "flowcontrol"},
+		[]string{"pid", "serverName", "verb", "code", "reason", "resource", "flowcontrol"},
 	)
 	// proxyRegisteredWatchers is a number of currently registered watchers splitted by resource.
 	proxyRegisteredWatchers = compbasemetrics.NewGaugeVec(
@@ -262,7 +262,7 @@ func (o *proxyResponseSizesObserver) Observe(metric MetricInfo) {
 type proxyRequestTerminationsObserver struct{}
 
 func (o *proxyRequestTerminationsObserver) Observe(metric MetricInfo) {
-	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, metric.ServerName, metric.Verb, metric.Path, metric.HttpCode, metric.Reason, metric.Resource, metric.FlowControl).Inc()
+	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, metric.ServerName, metric.Verb, metric.HttpCode, metric.Reason, metric.Resource, metric.FlowControl).Inc()
 }
 
 type proxyWatcherRegisteredObserver struct{}
