@@ -51,9 +51,10 @@ type responseWriterDelegator struct {
 	user            user.Info
 	impersonator    user.Info
 
-	req         *http.Request
-	requestInfo *request.RequestInfo
-	w           http.ResponseWriter
+	req              *http.Request
+	requestInfo      *request.RequestInfo
+	extraRequestInfo *gatewayrequest.ExtraRequestInfo
+	w                http.ResponseWriter
 
 	written int64
 }
@@ -63,21 +64,23 @@ func decorateResponseWriter(
 	w http.ResponseWriter,
 	logging bool,
 	requestInfo *request.RequestInfo,
-	host, endpoint string,
+	extraInfo *gatewayrequest.ExtraRequestInfo,
+	endpoint string,
 	user, impersonator user.Info,
 	flowControlName string,
 ) *responseWriterDelegator {
 	return &responseWriterDelegator{
-		startTime:       time.Now(),
-		req:             req,
-		w:               w,
-		logging:         logging,
-		requestInfo:     requestInfo,
-		host:            host,
-		endpoint:        endpoint,
-		flowControlName: flowControlName,
-		user:            user,
-		impersonator:    impersonator,
+		startTime:        time.Now(),
+		req:              req,
+		w:                w,
+		logging:          logging,
+		requestInfo:      requestInfo,
+		extraRequestInfo: extraInfo,
+		host:             extraInfo.Hostname,
+		endpoint:         endpoint,
+		flowControlName:  flowControlName,
+		user:             user,
+		impersonator:     impersonator,
 	}
 }
 
@@ -142,6 +145,11 @@ func (rw *responseWriterDelegator) MonitorAfterProxy() {
 		return
 	}
 
+	userInfo := rw.user
+	if rw.impersonator != nil {
+		userInfo = rw.impersonator
+	}
+
 	// we only monitor forwarded proxy reqeust here
 	metrics.MonitorProxyRequest(
 		rw.req,
@@ -149,6 +157,8 @@ func (rw *responseWriterDelegator) MonitorAfterProxy() {
 		rw.endpoint,
 		rw.flowControlName,
 		rw.requestInfo,
+		userInfo,
+		rw.extraRequestInfo.IsLongRunningRequest,
 		rw.Header().Get("Content-Type"),
 		rw.Status(),
 		rw.ContentLength(),

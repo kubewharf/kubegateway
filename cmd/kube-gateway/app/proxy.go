@@ -163,7 +163,7 @@ func buildProxyHandlerChainFunc(o *proxyHandlerOptions) func(apiHandler http.Han
 		handler = gatewayfilters.WithPreProcessingMetrics(handler)
 		handler = gatewayfilters.WithTraceLog(handler, o.enableProxyTracing, c.LongRunningFunc)
 		handler = gatewayfilters.WithUpstreamInfo(handler, o.clusterManager, c.Serializer)
-		handler = gatewayfilters.WithExtraRequestInfo(handler, &request.ExtraRequestInfoFactory{}, c.Serializer)
+		handler = gatewayfilters.WithExtraRequestInfo(handler, &request.ExtraRequestInfoFactory{LongRunningFunc: c.LongRunningFunc}, c.Serializer)
 		handler = gatewayfilters.WithTerminationMetrics(handler)
 		handler = gatewayfilters.WithRequestInfo(handler, c.RequestInfoResolver)
 		if c.SecureServing != nil && !c.SecureServing.DisableHTTP2 && o.goawayChance > 0 {

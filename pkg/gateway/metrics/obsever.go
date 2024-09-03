@@ -3,6 +3,9 @@ package metrics
 import (
 	"net/http"
 	"time"
+
+	"k8s.io/apiserver/pkg/authentication/user"
+	"k8s.io/apiserver/pkg/endpoints/request"
 )
 
 type MetricObserver interface {
@@ -35,6 +38,10 @@ var (
 
 type MetricInfo struct {
 	Request           *http.Request
+	RequestInfo       *request.RequestInfo
+	User              user.Info
+	UserName          string
+	IsLongRunning     bool
 	IsResourceRequest bool
 	ServerName        string
 	Endpoint          string
