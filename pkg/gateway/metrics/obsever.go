@@ -30,8 +30,9 @@ var (
 	ProxyRateLimiterRequestCounterObservers = newUnionObserver()
 	ProxyGlobalFlowControlAcquireObservers  = newUnionObserver()
 
-	ProxyRequestInflightObservers   = newUnionObserver()
-	ProxyRequestThroughputObservers = newUnionObserver()
+	ProxyRequestInflightObservers      = newUnionObserver()
+	ProxyRequestTotalDataSizeObservers = newUnionObserver()
+	ProxyRequestDataSizeObservers      = newUnionObserver()
 
 	ProxyHandlingLatencyObservers = newUnionObserver()
 )

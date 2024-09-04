@@ -71,6 +71,7 @@ type ExtraRequestInfo struct {
 	IsImpersonateRequest bool
 	Impersonator         user.Info
 	UpstreamCluster      *clusters.ClusterInfo
+	ReaderWriter         RequestReaderWriterWrapper
 	IsProxyRequest       bool
 	IsLongRunningRequest bool
 }

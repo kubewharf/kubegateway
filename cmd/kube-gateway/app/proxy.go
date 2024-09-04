@@ -157,7 +157,7 @@ func buildProxyHandlerChainFunc(o *proxyHandlerOptions) func(apiHandler http.Han
 		// rate and throughput monitor
 		throughputMonitor := monitor.NewThroughputMonitor()
 		rateMonitor := monitor.NewRateMonitor()
-		handler = gatewayfilters.WithRequestThroughput(handler, throughputMonitor)
+		handler = gatewayfilters.WithRequestReaderWriterWrapper(handler, throughputMonitor)
 		handler = gatewayfilters.WithRequestRate(handler, c.LongRunningFunc, rateMonitor)
 
 		handler = gatewayfilters.WithPreProcessingMetrics(handler)

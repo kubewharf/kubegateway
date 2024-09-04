@@ -203,8 +203,8 @@ var (
 		[]string{"pid"},
 	)
 
-	// proxyRequestThroughput is the total http data size request and response in bytes
-	proxyRequestThroughput = compbasemetrics.NewGaugeVec(
+	// proxyRequestTotalDataSize is the total http data size request and response in bytes
+	proxyRequestTotalDataSize = compbasemetrics.NewGaugeVec(
 		&compbasemetrics.GaugeOpts{
 			Namespace:      namespace,
 			Subsystem:      subsystem,
@@ -213,6 +213,18 @@ var (
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{"pid", "type"},
+	)
+
+	// proxyRequestDataSizeWithUser is the http data size request and response in bytes
+	proxyRequestDataSizeWithUser = compbasemetrics.NewGaugeVec(
+		&compbasemetrics.GaugeOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "http_data_size_bytes_with_user",
+			Help:           "The http data size for each serverName, verb, resource, user",
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"type", "serverName", "verb", "resource", "flowcontrol", "user"},
 	)
 
 	proxyHandlingLatencies = compbasemetrics.NewHistogramVec(
@@ -240,7 +252,8 @@ var (
 		proxyGlobalFlowControlRequestCounter,
 		proxyRequestInflight,
 		proxyRequestRate,
-		proxyRequestThroughput,
+		proxyRequestTotalDataSize,
+		proxyRequestDataSizeWithUser,
 		proxyHandlingLatencies,
 		proxyUserRequestCounter,
 		proxyUserRequestLoad,
@@ -272,7 +285,8 @@ func Register() {
 		ProxyRateLimiterRequestCounterObservers.AddObserver(&proxyRateLimiterRequestCounterObserver{})
 		ProxyGlobalFlowControlAcquireObservers.AddObserver(&proxyGlobalFlowControlAcquireObserver{})
 		ProxyRequestInflightObservers.AddObserver(&proxyRequestInflightObserver{})
-		ProxyRequestThroughputObservers.AddObserver(&proxyRequestThroughputObserver{})
+		ProxyRequestTotalDataSizeObservers.AddObserver(&proxyRequestTotalDataSizeObserver{})
+		ProxyRequestDataSizeObservers.AddObserver(&proxyRequestDataSizeObserver{})
 		ProxyHandlingLatencyObservers.AddObserver(&proxyHandlingLatenciesObserver{})
 	})
 }
@@ -355,11 +369,20 @@ func (o *proxyRequestInflightObserver) Observe(metric MetricInfo) {
 	proxyRequestRate.WithLabelValues(proxyPid).Set(metric.Rate)
 }
 
-type proxyRequestThroughputObserver struct{}
+type proxyRequestTotalDataSizeObserver struct{}
 
-func (o *proxyRequestThroughputObserver) Observe(metric MetricInfo) {
-	proxyRequestThroughput.WithLabelValues(proxyPid, "request").Set(float64(metric.RequestSize))
-	proxyRequestThroughput.WithLabelValues(proxyPid, "response").Set(float64(metric.ResponseSize))
+func (o *proxyRequestTotalDataSizeObserver) Observe(metric MetricInfo) {
+	proxyRequestTotalDataSize.WithLabelValues(proxyPid, "request").Set(float64(metric.RequestSize))
+	proxyRequestTotalDataSize.WithLabelValues(proxyPid, "response").Set(float64(metric.ResponseSize))
+}
+
+type proxyRequestDataSizeObserver struct{}
+
+func (o *proxyRequestDataSizeObserver) Observe(metric MetricInfo) {
+	if enableRequestMetricByUser {
+		proxyRequestDataSizeWithUser.WithLabelValues("request", metric.ServerName, metric.Verb, metric.Resource, metric.FlowControl, metric.UserName).Set(float64(metric.RequestSize))
+		proxyRequestDataSizeWithUser.WithLabelValues("response", metric.ServerName, metric.Verb, metric.Resource, metric.FlowControl, metric.UserName).Set(float64(metric.ResponseSize))
+	}
 }
 
 type proxyHandlingLatenciesObserver struct{}

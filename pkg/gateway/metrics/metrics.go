@@ -94,7 +94,9 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint, flowControl st
 	user user.Info,
 	isLongRunning bool,
 	contentType string,
-	httpCode, respSize int,
+	httpCode,
+	reqSize,
+	respSize int,
 	elapsed time.Duration) {
 	if requestInfo == nil {
 		requestInfo = &request.RequestInfo{Verb: req.Method, Path: req.URL.Path}
@@ -120,6 +122,7 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint, flowControl st
 		Verb:          verb,
 		Resource:      resource,
 		ResponseSize:  int64(respSize),
+		RequestSize:   int64(reqSize),
 		HttpCode:      codeToString(httpCode),
 		Latency:       elapsedSeconds,
 		Request:       req,
@@ -135,6 +138,8 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint, flowControl st
 	if requestInfo.IsResourceRequest {
 		ProxyResponseSizesObservers.Observe(metricInfo)
 	}
+
+	ProxyRequestDataSizeObservers.Observe(metricInfo)
 }
 
 // RecordProxyRequestTermination records that the request was terminated early as part of a resource
@@ -288,7 +293,7 @@ func RecordProxyRateAndInflight(rate float64, inflight int32) {
 }
 
 func RecordRequestThroughput(requestSizeTotal, responseSizeTotal int64) {
-	ProxyRequestThroughputObservers.Observe(MetricInfo{
+	ProxyRequestTotalDataSizeObservers.Observe(MetricInfo{
 		RequestSize:  requestSizeTotal,
 		ResponseSize: responseSizeTotal,
 	})
