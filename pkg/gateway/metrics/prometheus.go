@@ -99,7 +99,7 @@ var (
 		},
 		[]string{"pid", "serverName", "endpoint", "verb", "resource"},
 	)
-	proxyRequestLatenciesWithUser = compbasemetrics.NewHistogramVec(
+	proxyRequestUserLatencies = compbasemetrics.NewHistogramVec(
 		&compbasemetrics.HistogramOpts{
 			Namespace: namespace,
 			Subsystem: subsystem,
@@ -144,6 +144,16 @@ var (
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{"pid", "serverName", "verb", "code", "reason", "resource", "flowcontrol"},
+	)
+	proxyRequestUserTerminations = compbasemetrics.NewCounterVec(
+		&compbasemetrics.CounterOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "apiserver_request_terminations_total_with_user",
+			Help:           "Terminated requests number with user.",
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"serverName", "verb", "code", "reason", "resource", "flowcontrol", "user"},
 	)
 	// proxyRegisteredWatchers is a number of currently registered watchers splitted by resource.
 	proxyRegisteredWatchers = compbasemetrics.NewGaugeVec(
@@ -215,8 +225,8 @@ var (
 		[]string{"pid", "type"},
 	)
 
-	// proxyRequestDataSizeWithUser is the http data size request and response in bytes
-	proxyRequestDataSizeWithUser = compbasemetrics.NewGaugeVec(
+	// proxyRequestUserDataSize is the http data size request and response in bytes
+	proxyRequestUserDataSize = compbasemetrics.NewGaugeVec(
 		&compbasemetrics.GaugeOpts{
 			Namespace:      namespace,
 			Subsystem:      subsystem,
@@ -247,17 +257,18 @@ var (
 		proxyResponseSizes,
 		proxyUpstreamUnhealthy,
 		proxyRequestTerminationsTotal,
+		proxyRequestUserTerminations,
 		proxyRegisteredWatchers,
 		proxyRateLimiterRequestCounter,
 		proxyGlobalFlowControlRequestCounter,
 		proxyRequestInflight,
 		proxyRequestRate,
 		proxyRequestTotalDataSize,
-		proxyRequestDataSizeWithUser,
+		proxyRequestUserDataSize,
 		proxyHandlingLatencies,
 		proxyUserRequestCounter,
 		proxyUserRequestLoad,
-		proxyRequestLatenciesWithUser,
+		proxyRequestUserLatencies,
 	}
 )
 
@@ -322,7 +333,7 @@ func (o *proxyRequestLatenciesObserver) Observe(metric MetricInfo) {
 	proxyRequestLatencies.WithLabelValues(proxyPid, metric.ServerName, metric.Endpoint, metric.Verb, metric.Resource).Observe(metric.Latency)
 
 	if enableRequestMetricByUser {
-		proxyRequestLatenciesWithUser.WithLabelValues(metric.ServerName, metric.Verb, metric.Resource, metric.FlowControl, metric.UserName, "default").Observe(metric.Latency)
+		proxyRequestUserLatencies.WithLabelValues(metric.ServerName, metric.Verb, metric.Resource, metric.FlowControl, metric.UserName, "default").Observe(metric.Latency)
 	}
 }
 
@@ -336,6 +347,9 @@ type proxyRequestTerminationsObserver struct{}
 
 func (o *proxyRequestTerminationsObserver) Observe(metric MetricInfo) {
 	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, metric.ServerName, metric.Verb, metric.HttpCode, metric.Reason, metric.Resource, metric.FlowControl).Inc()
+	if enableRequestMetricByUser {
+		proxyRequestUserTerminations.WithLabelValues(metric.ServerName, metric.Verb, metric.HttpCode, metric.Reason, metric.Resource, metric.FlowControl, metric.UserName).Inc()
+	}
 }
 
 type proxyWatcherRegisteredObserver struct{}
@@ -380,8 +394,8 @@ type proxyRequestDataSizeObserver struct{}
 
 func (o *proxyRequestDataSizeObserver) Observe(metric MetricInfo) {
 	if enableRequestMetricByUser {
-		proxyRequestDataSizeWithUser.WithLabelValues("request", metric.ServerName, metric.Verb, metric.Resource, metric.FlowControl, metric.UserName).Set(float64(metric.RequestSize))
-		proxyRequestDataSizeWithUser.WithLabelValues("response", metric.ServerName, metric.Verb, metric.Resource, metric.FlowControl, metric.UserName).Set(float64(metric.ResponseSize))
+		proxyRequestUserDataSize.WithLabelValues("request", metric.ServerName, metric.Verb, metric.Resource, metric.FlowControl, metric.UserName).Set(float64(metric.RequestSize))
+		proxyRequestUserDataSize.WithLabelValues("response", metric.ServerName, metric.Verb, metric.Resource, metric.FlowControl, metric.UserName).Set(float64(metric.ResponseSize))
 	}
 }
 

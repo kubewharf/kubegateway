@@ -146,7 +146,7 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint, flowControl st
 // preservation or apiserver self-defense mechanism (e.g. timeouts, maxinflight throttling,
 // proxyHandler errors). RecordProxyRequestTermination should only be called zero or one times
 // per request.
-func RecordProxyRequestTermination(req *http.Request, code int, reason, flowControl string) {
+func RecordProxyRequestTermination(req *http.Request, code int, reason, flowControl string, user user.Info) {
 	requestInfo, ok := genericapirequest.RequestInfoFrom(req.Context())
 	if !ok {
 		requestInfo = &request.RequestInfo{Verb: req.Method, Path: req.URL.Path}
@@ -165,6 +165,8 @@ func RecordProxyRequestTermination(req *http.Request, code int, reason, flowCont
 	serverName := net.HostWithoutPort(req.Host)
 	resource := cleanResource(requestInfo)
 
+	userName := cleanUserForMetric(user)
+
 	ProxyRequestTerminationsObservers.Observe(MetricInfo{
 		ServerName:  serverName,
 		FlowControl: flowControl,
@@ -174,6 +176,8 @@ func RecordProxyRequestTermination(req *http.Request, code int, reason, flowCont
 		Reason:      reason,
 		Resource:    resource,
 		Request:     req,
+		User:        user,
+		UserName:    userName,
 	})
 }
 
@@ -312,6 +316,9 @@ func RecordProxyTraceLatency(traceLatencies map[string]time.Duration, serverName
 }
 
 func cleanUserForMetric(user user.Info) string {
+	if user == nil {
+		return "anonymous"
+	}
 	userName := user.GetName()
 	for _, ug := range user.GetGroups() {
 		if strings.Contains(ug, "system:nodes") {

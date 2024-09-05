@@ -86,7 +86,7 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	_ = request.SetFlowControl(req.Context(), endpointPicker.FlowControlName())
+	_ = request.SetProxyInfo(req.Context(), endpointPicker.FlowControlName(), user)
 
 	flowcontrol := endpointPicker.FlowControl()
 	if !flowcontrol.TryAcquire() {
