@@ -17,10 +17,25 @@ import (
 )
 
 const (
-	MaxIdealDuration    = time.Millisecond * 900
-	MaxLimitRequestQPS  = 200
-	LimitRequestTimeout = time.Millisecond * 290
+	MaxIdealDuration   = time.Millisecond * 900
+	MaxLimitRequestQPS = 100
 )
+
+var (
+	LimitRequestTimeout = time.Millisecond * 500
+)
+
+func init() {
+	if val := os.Getenv("LIMIT_ACQUIRE_TIMEOUT"); len(val) > 0 {
+		duration, err := time.ParseDuration(val)
+		if err != nil {
+			klog.Warningf("Illegal LIMIT_ACQUIRE_TIMEOUT(%q): %v."+
+				" Default value %d is used", val, err, LimitRequestTimeout)
+		} else {
+			LimitRequestTimeout = duration
+		}
+	}
+}
 
 func NewGlobalCounterProvider(ctx context.Context, cluster string, clientSets clientsets.ClientSets, clientID string) GlobalCounterProvider {
 	return &globalCounterManager{
@@ -195,7 +210,7 @@ func (g *globalCounterManager) doAcquire() {
 
 		acquireResult, err := client.ProxyV1alpha1().RateLimitConditions().Acquire(ctx, g.cluster, acquireRequest, metav1.CreateOptions{})
 		if err != nil {
-			klog.Errorf("Do acquire request error: %v", err)
+			klog.Errorf("Do acquire request for cluster=%v requestID=%v error: %v", g.cluster, requestTime, err)
 			result = requestReasonRateLimiterError
 			if os.IsTimeout(err) {
 				result = requestReasonTimeout
