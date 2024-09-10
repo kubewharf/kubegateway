@@ -303,14 +303,19 @@ func RecordRequestThroughput(requestSizeTotal, responseSizeTotal int64) {
 	})
 }
 
-func RecordProxyTraceLatency(traceLatencies map[string]time.Duration, serverName string, requestInfo *request.RequestInfo) {
+func RecordProxyTraceLatency(traceLatencies map[string]time.Duration, serverName string, requestInfo *request.RequestInfo, user user.Info, req *http.Request) {
 	verb := strings.ToUpper(requestInfo.Verb)
 	resource := cleanResource(requestInfo)
+	userName := cleanUserForMetric(user)
+
 	metric := MetricInfo{
 		ServerName:     serverName,
 		Verb:           verb,
 		Resource:       resource,
 		TraceLatencies: traceLatencies,
+		Request:        req,
+		User:           user,
+		UserName:       userName,
 	}
 	ProxyHandlingLatencyObservers.Observe(metric)
 }

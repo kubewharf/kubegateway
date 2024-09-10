@@ -18,6 +18,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	compbasemetrics "k8s.io/component-base/metrics"
@@ -250,6 +251,19 @@ var (
 		[]string{"pid", "serverName", "verb", "resource", "stage"},
 	)
 
+	proxyUserClientOverCostLatencies = compbasemetrics.NewHistogramVec(
+		&compbasemetrics.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "user_client_over_cost_seconds",
+			Help:      "User client over cost (client_cost - upstream_cost) for each serverName, verb, resource, user.",
+			// Start with 1ms with the last bucket being [~10s, Inf)
+			Buckets:        []float64{0.01, 0.05, 0.1, 0.5, 1.0, 5, 10, 30, 60},
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"serverName", "verb", "resource", "user"},
+	)
+
 	localMetrics = []compbasemetrics.Registerable{
 		proxyReceiveRequestCounter,
 		proxyRequestCounter,
@@ -269,6 +283,7 @@ var (
 		proxyUserRequestCounter,
 		proxyUserRequestLoad,
 		proxyRequestUserLatencies,
+		proxyUserClientOverCostLatencies,
 	}
 )
 
@@ -404,4 +419,12 @@ type proxyHandlingLatenciesObserver struct{}
 func (o *proxyHandlingLatenciesObserver) Observe(metric MetricInfo) {
 	proxyHandlingLatencies.WithLabelValues(proxyPid, metric.ServerName, metric.Verb, metric.Resource, tracing.MetricStageHandlingDelay).
 		Observe(metric.TraceLatencies[tracing.MetricStageHandlingDelay].Seconds())
+
+	if enableRequestMetricByUser {
+		overCostLatency := metric.TraceLatencies[tracing.MetricStageClientOverCost]
+		if overCostLatency > time.Millisecond {
+			proxyUserClientOverCostLatencies.WithLabelValues(metric.ServerName, metric.Verb, metric.Resource, metric.UserName).
+				Observe(metric.TraceLatencies[tracing.MetricStageClientOverCost].Seconds())
+		}
+	}
 }

@@ -31,11 +31,12 @@ const (
 )
 
 const (
-	MetricStageClientRead    = "client_read"
-	MetricStageClientWrite   = "client_write"
-	MetricStageUpstreamRead  = "upstream_read"
-	MetricStageUpstreamWrite = "upstream_write"
-	MetricStageHandlingDelay = "handling_delay"
+	MetricStageClientRead     = "client_read"
+	MetricStageClientWrite    = "client_write"
+	MetricStageUpstreamRead   = "upstream_read"
+	MetricStageUpstreamWrite  = "upstream_write"
+	MetricStageHandlingDelay  = "handling_delay"
+	MetricStageClientOverCost = "client_over_cost"
 )
 
 var (
@@ -181,6 +182,8 @@ func (t *RequestTraceInfo) StageLatency() map[string]time.Duration {
 		}
 	}
 	stageLatency[MetricStageHandlingDelay] = t.endTime.Sub(t.startTime) - eliminatedLatency
+	stageLatency[MetricStageClientOverCost] = stageLatency[MetricStageClientRead] + stageLatency[MetricStageClientWrite] -
+		stageLatency[MetricStageUpstreamRead] - stageLatency[MetricStageUpstreamWrite]
 
 	t.stageLatency = stageLatency
 	return stageLatency
