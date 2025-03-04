@@ -185,6 +185,13 @@ func schema_pkg_apis_proxy_v1alpha1_ClientConfig(ref common.ReferenceCallback) c
 							Format:      "int32",
 						},
 					},
+					"serverName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ServerName is passed to the server for SNI and is used in the client to check server ceritificates against. If ServerName is empty, the upstreamcluster name used to contact the server is used.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 			},
 		},
@@ -749,6 +756,13 @@ func schema_pkg_apis_proxy_v1alpha1_RateLimitAcquireSpec(ref common.ReferenceCal
 							},
 						},
 					},
+					"requestID": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Request id",
+							Type:        []string{"integer"},
+							Format:      "int64",
+						},
+					},
 				},
 			},
 		},
@@ -1139,6 +1153,20 @@ func schema_pkg_apis_proxy_v1alpha1_SecureServing(ref common.ReferenceCallback) 
 							Description: "ClientCAData contains PEM-encoded data from a ca file for TLS. The serialized form of data is a base64 encoded string",
 							Type:        []string{"string"},
 							Format:      "byte",
+						},
+					},
+					"serverNames": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ServerNames are used to route requests with different hostnames for the same upstream cluster.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Type:   []string{"string"},
+										Format: "",
+									},
+								},
+							},
 						},
 					},
 				},
