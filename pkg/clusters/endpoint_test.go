@@ -21,13 +21,13 @@ import (
 func TestEndpointInfo_ReadyAndReason(t *testing.T) {
 	tests := []struct {
 		name      string
-		status    endpointStatus
+		status    *endpointStatus
 		wantReady bool
 		want      string
 	}{
 		{
 			"ready",
-			endpointStatus{
+			&endpointStatus{
 				Disabled: false,
 				Healthy:  true,
 			},
@@ -36,7 +36,7 @@ func TestEndpointInfo_ReadyAndReason(t *testing.T) {
 		},
 		{
 			"disabled",
-			endpointStatus{
+			&endpointStatus{
 				Disabled: true,
 				Healthy:  true,
 			},
@@ -45,7 +45,7 @@ func TestEndpointInfo_ReadyAndReason(t *testing.T) {
 		},
 		{
 			"unhealthy",
-			endpointStatus{
+			&endpointStatus{
 				Disabled: false,
 				Healthy:  false,
 				Reason:   "Timeout",
