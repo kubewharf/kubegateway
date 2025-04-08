@@ -68,6 +68,7 @@ func (m *manager) AddWithKey(key string, cluster *ClusterInfo) {
 	if cluster == nil {
 		return
 	}
+	key = strings.ToLower(key)
 	klog.V(1).Infof("[cluster manager] new cluster info is added, cluster=%q [%q]", cluster.Cluster, key)
 	m.clusters.Store(key, cluster)
 }

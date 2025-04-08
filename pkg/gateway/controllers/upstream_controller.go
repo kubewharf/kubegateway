@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -101,7 +102,7 @@ func (m *UpstreamClusterController) syncUpstreamCluster(obj interface{}) (syncqu
 	}
 
 	_, err := m.lister.Get(cluster.Name)
-	clusterName := cluster.Name
+	clusterName := strings.ToLower(cluster.Name)
 	if errors.IsNotFound(err) {
 		// clean cluster
 		m.DeleteForServerNames(clusterName)
@@ -111,16 +112,29 @@ func (m *UpstreamClusterController) syncUpstreamCluster(obj interface{}) (syncqu
 		return syncqueue.Result{}, err
 	}
 
+	if err := m.checkUpstreamServerNameConflict(cluster); err != nil {
+		klog.Errorf("ckeck cluster %v failed: %v", cluster.Name, err)
+		return syncqueue.Result{RequeueAfter: 5 * time.Second, MaxRequeueTimes: 3}, nil
+	}
+
 	info, ok := m.Get(clusterName)
 
 	if !ok {
+		var err error
+		var clusterInfo *clusters.ClusterInfo
 		// bootstrap
-		clusterInfo, err := clusters.CreateClusterInfo(cluster, GatewayHealthCheck, m.rateLimiter, m.clientSets)
+		clusterInfo, err = clusters.CreateClusterInfo(cluster, GatewayHealthCheck, m.rateLimiter, m.clientSets)
+		defer func() {
+			if err != nil {
+				clusterInfo.Stop()
+				m.DeleteForServerNames(clusterName)
+			}
+		}()
 		if err != nil {
 			klog.Errorf("failed to create cluster: %v, err: %v", cluster.Name, err)
 			return syncqueue.Result{RequeueAfter: 5 * time.Second, MaxRequeueTimes: 3}, nil
 		}
-		if err := m.AddOrUpdateForServerNames(nil, clusterInfo); err != nil {
+		if err = m.AddOrUpdateForServerNames(nil, clusterInfo); err != nil {
 			klog.Errorf("Add cluster %q err: %v", clusterInfo.Cluster, err)
 			return syncqueue.Result{RequeueAfter: 5 * time.Second, MaxRequeueTimes: 3}, nil
 		}
@@ -206,13 +220,17 @@ func (m *UpstreamClusterController) SNIVerifyOptions(host string) (x509.VerifyOp
 }
 
 func (m *UpstreamClusterController) AddOrUpdateForServerNames(oldServerNames []string, clusterInfo *clusters.ClusterInfo) error {
-	var newServerNames []string
-	if clusterInfo != nil {
-		newServerNames = clusterInfo.LoadServerNames()
+	if clusterInfo == nil {
+		return fmt.Errorf("cluster info is nil")
 	}
+	newServerNames := clusterInfo.LoadServerNames()
 
 	if reflect.DeepEqual(oldServerNames, newServerNames) {
 		return nil
+	}
+
+	if err := m.checkServerNameConflict(clusterInfo.Cluster, oldServerNames, newServerNames); err != nil {
+		return err
 	}
 
 	oldServerNameMap := map[string]bool{}
@@ -221,17 +239,15 @@ func (m *UpstreamClusterController) AddOrUpdateForServerNames(oldServerNames []s
 	}
 	newServerNameMap := map[string]bool{}
 	for _, newServerName := range newServerNames {
-		// check conflict
-		c, ok := m.Get(newServerName)
-		if ok && c.Cluster != clusterInfo.Cluster {
-			return fmt.Errorf("serverName %q [cluster %q] conflicts with cluster %q", newServerName, clusterInfo.Cluster, c.Cluster)
-		}
 		newServerNameMap[newServerName] = true
 	}
 
 	for _, oldServerName := range oldServerNames {
 		if _, ok := newServerNameMap[oldServerName]; !ok {
-			m.Delete(oldServerName)
+			c, ok := m.Get(oldServerName)
+			if ok && c.Cluster == clusterInfo.Cluster {
+				m.Delete(oldServerName)
+			}
 		}
 	}
 
@@ -244,13 +260,65 @@ func (m *UpstreamClusterController) AddOrUpdateForServerNames(oldServerNames []s
 	return nil
 }
 
+func (m *UpstreamClusterController) checkUpstreamServerNameConflict(cluster *proxyv1alpha1.UpstreamCluster) error {
+	clusterName := strings.ToLower(cluster.Name)
+
+	var newServerNames []string
+	newServerNames = append(newServerNames, clusterName)
+	for _, serverName := range cluster.Spec.SecureServing.ServerNames {
+		newServerNames = append(newServerNames, strings.ToLower(serverName))
+	}
+
+	var oldServerNames []string
+	info, ok := m.Get(clusterName)
+	if ok {
+		oldServerNames = info.LoadServerNames()
+	}
+
+	return m.checkServerNameConflict(clusterName, oldServerNames, newServerNames)
+}
+
+func (m *UpstreamClusterController) checkServerNameConflict(clusterName string, oldServerNames, newServerNames []string) error {
+	if reflect.DeepEqual(oldServerNames, newServerNames) {
+		return nil
+	}
+
+	oldServerNameMap := map[string]bool{}
+	for _, oldServerName := range oldServerNames {
+		oldServerNameMap[oldServerName] = true
+	}
+	newServerNameMap := map[string]bool{}
+	for _, newServerName := range newServerNames {
+		// check conflict
+		c, ok := m.Get(newServerName)
+		if ok && c.Cluster != clusterName {
+			return fmt.Errorf("serverName %q [cluster %q] conflicts with cluster %q", newServerName, clusterName, c.Cluster)
+		}
+		newServerNameMap[newServerName] = true
+	}
+
+	for _, oldServerName := range oldServerNames {
+		if _, ok := newServerNameMap[oldServerName]; !ok {
+			c, ok := m.Get(oldServerName)
+			if ok && c.Cluster != clusterName {
+				return fmt.Errorf("serverName %q [cluster %q] conflicts with cluster %q and can not be removed", oldServerName, clusterName, c.Cluster)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (m *UpstreamClusterController) DeleteForServerNames(clusterName string) {
 	clusterInfo, ok := m.Get(clusterName)
 	if ok {
 		serverNames := clusterInfo.LoadServerNames()
 		klog.V(1).Infof("Delete and stop cluster %q", serverNames)
 		for _, serverName := range serverNames {
-			m.DeleteWithStop(serverName)
+			c, ok := m.Get(serverName)
+			if ok && c.Cluster == clusterName {
+				m.DeleteWithStop(serverName)
+			}
 		}
 	}
 }
