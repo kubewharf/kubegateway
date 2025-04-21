@@ -34,17 +34,24 @@ import (
 )
 
 type endpointStatus struct {
-	Healthy  bool
-	Reason   string
-	Message  string
-	Disabled bool
-	mux      sync.RWMutex
+	Healthy        bool
+	Reason         string
+	Message        string
+	Disabled       bool
+	UnhealthyCount int
+	mux            sync.RWMutex
 }
 
 func (s *endpointStatus) IsReady() bool {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 	return !s.Disabled && s.Healthy
+}
+
+func (s *endpointStatus) GetUnhealthyCount() int {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	return s.UnhealthyCount
 }
 
 func (s *endpointStatus) SetDisabled(disabled bool) {
@@ -59,6 +66,11 @@ func (s *endpointStatus) SetStatus(healthy bool, reason, message string) {
 	s.Healthy = healthy
 	s.Reason = reason
 	s.Message = message
+	if healthy {
+		s.UnhealthyCount = 0
+	} else {
+		s.UnhealthyCount++
+	}
 }
 
 type EndpointInfo struct {
@@ -179,13 +191,18 @@ func (e *EndpointInfo) IstDisabled() bool {
 	return e.status.Disabled
 }
 
+func (e *EndpointInfo) GetUnhealthyCount() int {
+	return e.status.GetUnhealthyCount()
+}
+
 func (e *EndpointInfo) UpdateStatus(healthy bool, reason, message string) {
 	if !healthy {
 		metrics.RecordUnhealthyUpstream(e.Cluster, e.Endpoint, reason)
 	}
+	e.status.SetStatus(healthy, reason, message)
+
 	if e.status.Healthy != healthy {
 		// healthy changed
-		e.status.SetStatus(healthy, reason, message)
 		e.recordStatusChange()
 	}
 }

@@ -71,3 +71,34 @@ func TestEndpointInfo_ReadyAndReason(t *testing.T) {
 		})
 	}
 }
+
+func TestEndpointInfo_UnhealthyCount(t *testing.T) {
+	e := &EndpointInfo{
+		Endpoint: "",
+		status: &endpointStatus{
+			Disabled: true,
+			Healthy:  true,
+		},
+	}
+	if e.GetUnhealthyCount() != 0 {
+		t.Errorf("unhealthy count should be 0, actual: %d", e.GetUnhealthyCount())
+	}
+
+	for i := 0; i < 2; i++ {
+		e.UpdateStatus(false, "mock error", "mock error message")
+		if e.GetUnhealthyCount() != i+1 {
+			t.Errorf("unhealthy count should be %d, actual: %d", i+1, e.GetUnhealthyCount())
+		}
+	}
+	e.UpdateStatus(true, "", "")
+	if e.GetUnhealthyCount() != 0 {
+		t.Errorf("unhealthy count should be 0, actual: %d", e.GetUnhealthyCount())
+	}
+
+	for i := 0; i < 5; i++ {
+		e.UpdateStatus(false, "mock error", "mock error message")
+		if e.GetUnhealthyCount() != i+1 {
+			t.Errorf("unhealthy count should be %d, actual: %d", i+1, e.GetUnhealthyCount())
+		}
+	}
+}
