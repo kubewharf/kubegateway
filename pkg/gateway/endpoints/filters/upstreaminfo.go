@@ -55,7 +55,7 @@ func WithUpstreamInfo(handler http.Handler, clusterManager clusters.Manager, s r
 			}
 
 			if cluster.FeatureEnabled(features.DenyAllRequests) {
-				response.TerminateWithError(s, errors.NewServiceUnavailable(fmt.Sprintf("request for %v denied by featureGate(DenyAllRequests)", info.Hostname)),
+				response.TerminateWithError(s, errors.NewTooManyRequests(fmt.Sprintf("request for %v denied by featureGate(DenyAllRequests)", info.Hostname), 0),
 					response.TerminationReasonCircuitBreaker, w, req)
 				return
 			}
