@@ -29,8 +29,9 @@ var (
 	GlobalMaxInflightBatchAcquireMin     = int32(1)
 )
 
-const (
-	waitAcquireTimeout = time.Millisecond * 300
+var (
+	waitAcquireTimeout      = time.Millisecond * 300
+	batchAcquireMaxDuration = time.Millisecond * 100
 )
 
 func init() {
@@ -319,7 +320,7 @@ func (m *tokenBucketWrapper) ExpectToken() int32 {
 
 	batch := m.tokenBatch
 	lastQPS := m.meter.Rate()
-	if lastQPS > float64(m.tokenBatch) {
+	if lastQPS > float64(m.reserve) {
 		batch = int32(lastQPS) * GlobalTokenBucketBatchAcquiredPercent / 100
 		if batch < GlobalTokenBucketBatchAcquireMin {
 			batch = GlobalTokenBucketBatchAcquireMin
@@ -331,7 +332,15 @@ func (m *tokenBucketWrapper) ExpectToken() int32 {
 	if expect < 0 {
 		expect = 0
 	}
-	if expect > batch {
+
+	minBatch := m.tokenBatch
+	if expect < minBatch {
+		// skip acquiring until expect more than min batch
+		acquireTime := atomic.LoadInt64(&m.lastAcquireTime)
+		if time.Now().UnixNano()-acquireTime < int64(batchAcquireMaxDuration) {
+			expect = 0
+		}
+	} else if expect > batch {
 		expect = batch
 	}
 
@@ -372,8 +381,8 @@ func (m *tokenBucketWrapper) SetLimit(acquireResult *AcquireResult) bool {
 			if lastQPS < float64(localQPS) {
 				lastQPS = float64(localQPS)
 			}
-			klog.V(2).Infof("[global tokenBucket] cluster=%q resize flowcontrol=%s qps=%v for error: %v",
-				m.fcc.cluster, m.fcc.name, lastQPS, result.Error)
+			klog.V(2).Infof("[global tokenBucket] cluster=%q resize flowcontrol=%s qps=%v requestID=%v for error: %v",
+				m.fcc.cluster, m.fcc.name, lastQPS, acquireResult.requestTime, result.Error)
 
 			m.FlowControl.Resize(uint32(lastQPS), uint32(lastQPS))
 			atomic.StoreUint32(&m.serverUnavailable, 1)

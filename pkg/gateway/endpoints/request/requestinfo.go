@@ -16,10 +16,12 @@ package request
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	authenticationv1 "k8s.io/api/authentication/v1"
 	"k8s.io/apiserver/pkg/authentication/user"
+	apirequest "k8s.io/apiserver/pkg/endpoints/request"
 
 	"github.com/kubewharf/kubegateway/pkg/clusters"
 	"github.com/kubewharf/kubegateway/pkg/gateway/net"
@@ -39,9 +41,19 @@ type ExtraRequestInfoResolver interface {
 	NewExtraRequestInfo(req *http.Request) (*ExtraRequestInfo, error)
 }
 
-type ExtraRequestInfoFactory struct{}
+type ExtraRequestInfoFactory struct {
+	LongRunningFunc apirequest.LongRunningRequestCheck
+}
 
 func (f *ExtraRequestInfoFactory) NewExtraRequestInfo(req *http.Request) (*ExtraRequestInfo, error) {
+	ctx := req.Context()
+	requestInfo, ok := apirequest.RequestInfoFrom(ctx)
+	if !ok {
+		return nil, errors.New("no RequestInfo found in the context")
+	}
+
+	isLongRunning := f.LongRunningFunc(req, requestInfo)
+
 	isImpersonate := len(req.Header.Get(authenticationv1.ImpersonateUserHeader)) > 0
 	hostname := net.HostWithoutPort(req.Host)
 
@@ -49,6 +61,7 @@ func (f *ExtraRequestInfoFactory) NewExtraRequestInfo(req *http.Request) (*Extra
 		Scheme:               req.URL.Scheme,
 		Hostname:             hostname,
 		IsImpersonateRequest: isImpersonate,
+		IsLongRunningRequest: isLongRunning,
 	}, nil
 }
 
@@ -58,7 +71,9 @@ type ExtraRequestInfo struct {
 	IsImpersonateRequest bool
 	Impersonator         user.Info
 	UpstreamCluster      *clusters.ClusterInfo
+	ReaderWriter         RequestReaderWriterWrapper
 	IsProxyRequest       bool
+	IsLongRunningRequest bool
 }
 
 // WithExtraRequestInfo returns a copy of parent in which the ExtraRequestInfo value is set

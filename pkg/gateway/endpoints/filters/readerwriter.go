@@ -29,6 +29,7 @@ import (
 	"k8s.io/apiserver/pkg/endpoints/responsewriter"
 
 	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/monitor"
+	"github.com/kubewharf/kubegateway/pkg/gateway/endpoints/request"
 	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
 )
 
@@ -38,8 +39,8 @@ const (
 
 var startThroughputMetricOnce sync.Once
 
-// WithRequestThroughput record request input and output throughput
-func WithRequestThroughput(
+// WithRequestReaderWriterWrapper record request input and output throughput
+func WithRequestReaderWriterWrapper(
 	handler http.Handler,
 	throughputMonitor *monitor.ThroughputMonitor,
 ) http.Handler {
@@ -52,32 +53,49 @@ func WithRequestThroughput(
 	})
 
 	return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		delegate := &throughputResponseWriter{
+		delegate := &responseWriterWrapper{
 			ResponseWriter:    w,
 			throughputMonitor: throughputMonitor,
 		}
 		rw := responsewriter.WrapForHTTP1Or2(delegate)
 
-		rd := &throughputRequestReader{
+		rd := &requestReaderWrapper{
 			ReadCloser:        req.Body,
 			throughputMonitor: throughputMonitor,
 		}
 		req.Body = rd
 
+		info, ok := request.ExtraRequestInfoFrom(req.Context())
+		if !ok {
+			handler.ServeHTTP(w, req)
+			return
+		}
+		info.ReaderWriter = &readerWriter{
+			requestReaderWrapper:  rd,
+			responseWriterWrapper: delegate,
+		}
+		req = req.WithContext(request.WithExtraRequestInfo(req.Context(), info))
 		handler.ServeHTTP(rw, req)
 	})
 }
 
-var _ io.ReadCloser = &throughputRequestReader{}
+var _ request.RequestReaderWriterWrapper = &readerWriter{}
 
-type throughputRequestReader struct {
+type readerWriter struct {
+	*requestReaderWrapper
+	*responseWriterWrapper
+}
+
+var _ io.ReadCloser = &requestReaderWrapper{}
+
+type requestReaderWrapper struct {
 	io.ReadCloser
 	read              int
 	throughputMonitor *monitor.ThroughputMonitor
 }
 
 // Write implements io.ReadCloser
-func (r *throughputRequestReader) Read(p []byte) (int, error) {
+func (r *requestReaderWrapper) Read(p []byte) (int, error) {
 	n, err := r.ReadCloser.Read(p)
 	r.read += n
 
@@ -85,25 +103,55 @@ func (r *throughputRequestReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func (r *throughputRequestReader) RequestSize() int {
+func (r *requestReaderWrapper) RequestSize() int {
 	return r.read
 }
 
-var _ http.ResponseWriter = &throughputResponseWriter{}
-var _ responsewriter.UserProvidedDecorator = &throughputResponseWriter{}
+var _ http.ResponseWriter = &responseWriterWrapper{}
+var _ responsewriter.UserProvidedDecorator = &responseWriterWrapper{}
 
-type throughputResponseWriter struct {
+type responseWriterWrapper struct {
+	statusRecorded     bool
+	status             int
+	addedInfo          string
+	startTime          time.Time
+	captureErrorOutput bool
+	written            int64
+	read               int
+
 	http.ResponseWriter
-	written           int64
 	throughputMonitor *monitor.ThroughputMonitor
 }
 
-func (w *throughputResponseWriter) Unwrap() http.ResponseWriter {
+func (w *responseWriterWrapper) Unwrap() http.ResponseWriter {
 	return w.ResponseWriter
 }
 
+// WriteHeader implements http.ResponseWriter.
+func (w *responseWriterWrapper) WriteHeader(status int) {
+	w.recordStatus(status)
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *responseWriterWrapper) recordStatus(status int) {
+	w.status = status
+	w.statusRecorded = true
+	w.captureErrorOutput = captureErrorOutput(status)
+}
+
+func captureErrorOutput(code int) bool {
+	return code >= http.StatusInternalServerError
+}
+
 // Write implements http.ResponseWriter.
-func (w *throughputResponseWriter) Write(b []byte) (int, error) {
+func (w *responseWriterWrapper) Write(b []byte) (int, error) {
+	if !w.statusRecorded {
+		w.recordStatus(http.StatusOK) // Default if WriteHeader hasn't been called
+	}
+	if w.captureErrorOutput {
+		w.debugf("logging error output: %q\n", string(b))
+	}
+
 	n, err := w.ResponseWriter.Write(b)
 	w.written += int64(n)
 
@@ -111,17 +159,30 @@ func (w *throughputResponseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// debugf adds additional data to be logged with this request.
+func (w *responseWriterWrapper) debugf(format string, data ...interface{}) {
+	w.addedInfo += "\n" + fmt.Sprintf(format, data...)
+}
+
 // Hijack implements http.Hijacker. If the underlying ResponseWriter is a
 // Hijacker, its Hijack method is returned. Otherwise an error is returned.
-func (w *throughputResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+func (w *responseWriterWrapper) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if hj, ok := w.ResponseWriter.(http.Hijacker); ok {
 		return hj.Hijack()
 	}
 	return nil, nil, fmt.Errorf("http.Hijacker interface is not supported")
 }
 
-func (w *throughputResponseWriter) ResponseSize() int {
+func (w *responseWriterWrapper) ResponseSize() int {
 	return int(w.written)
+}
+
+func (w *responseWriterWrapper) Status() int {
+	return w.status
+}
+
+func (w *responseWriterWrapper) AddedInfo() string {
+	return w.addedInfo
 }
 
 func startRecordingThroughputMetric(throughputMonitor *monitor.ThroughputMonitor) {

@@ -157,13 +157,13 @@ func buildProxyHandlerChainFunc(o *proxyHandlerOptions) func(apiHandler http.Han
 		// rate and throughput monitor
 		throughputMonitor := monitor.NewThroughputMonitor()
 		rateMonitor := monitor.NewRateMonitor()
-		handler = gatewayfilters.WithRequestThroughput(handler, throughputMonitor)
+		handler = gatewayfilters.WithRequestReaderWriterWrapper(handler, throughputMonitor)
 		handler = gatewayfilters.WithRequestRate(handler, c.LongRunningFunc, rateMonitor)
 
 		handler = gatewayfilters.WithPreProcessingMetrics(handler)
 		handler = gatewayfilters.WithTraceLog(handler, o.enableProxyTracing, c.LongRunningFunc)
 		handler = gatewayfilters.WithUpstreamInfo(handler, o.clusterManager, c.Serializer)
-		handler = gatewayfilters.WithExtraRequestInfo(handler, &request.ExtraRequestInfoFactory{}, c.Serializer)
+		handler = gatewayfilters.WithExtraRequestInfo(handler, &request.ExtraRequestInfoFactory{LongRunningFunc: c.LongRunningFunc}, c.Serializer)
 		handler = gatewayfilters.WithTerminationMetrics(handler)
 		handler = gatewayfilters.WithRequestInfo(handler, c.RequestInfoResolver)
 		if c.SecureServing != nil && !c.SecureServing.DisableHTTP2 && o.goawayChance > 0 {

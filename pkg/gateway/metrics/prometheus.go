@@ -15,14 +15,16 @@
 package metrics
 
 import (
-	"github.com/kubewharf/kubegateway/pkg/util/tracing"
-	"github.com/prometheus/client_golang/prometheus"
-	compbasemetrics "k8s.io/component-base/metrics"
 	"os"
 	"strconv"
 	"sync"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	compbasemetrics "k8s.io/component-base/metrics"
 
 	metricsregistry "github.com/kubewharf/kubegateway/pkg/gateway/metrics/registry"
+	"github.com/kubewharf/kubegateway/pkg/util/tracing"
 )
 
 const (
@@ -30,7 +32,15 @@ const (
 	subsystem = "proxy"
 )
 
+func init() {
+	if os.Getenv("ENABLE_REQUEST_METRIC_WITH_USER") == "true" {
+		enableRequestMetricByUser = true
+	}
+}
+
 var (
+	enableRequestMetricByUser = false
+
 	proxyPid = strconv.Itoa(os.Getpid())
 
 	proxyReceiveRequestCounter = compbasemetrics.NewCounterVec(
@@ -53,6 +63,29 @@ var (
 		},
 		[]string{"pid", "serverName", "endpoint", "verb", "resource", "code", "flowcontrol"},
 	)
+
+	proxyUserRequestCounter = compbasemetrics.NewCounterVec(
+		&compbasemetrics.CounterOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "apiserver_request_total_with_user",
+			Help:           "Counter of proxied apiserver requests by user, it is recorded when this proxied request ends",
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"serverName", "verb", "resource", "code", "flowcontrol", "user"},
+	)
+
+	proxyUserRequestLoad = compbasemetrics.NewCounterVec(
+		&compbasemetrics.CounterOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "apiserver_request_load_with_user",
+			Help:           "Total time cost of proxied apiserver requests by user, it is recorded when this proxied request ends",
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"serverName", "verb", "resource", "code", "flowcontrol", "user"},
+	)
+
 	proxyRequestLatencies = compbasemetrics.NewHistogramVec(
 		&compbasemetrics.HistogramOpts{
 			Namespace: namespace,
@@ -62,11 +95,24 @@ var (
 			// This metric is used for verifying api call latencies SLO,
 			// as well as tracking regressions in this aspects.
 			// Thus we customize buckets significantly, to empower both usecases.
-			Buckets: []float64{0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
-				1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5, 6, 7, 8, 9, 10, 15, 20, 25, 30, 40, 50, 60, 120, 180, 240, 300},
+			Buckets:        []float64{0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 5, 10, 30, 60, 120, 180, 600},
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{"pid", "serverName", "endpoint", "verb", "resource"},
+	)
+	proxyRequestUserLatencies = compbasemetrics.NewHistogramVec(
+		&compbasemetrics.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "apiserver_request_duration_seconds_with_user",
+			Help:      "Response latency distribution in seconds for each serverName, endpoint, verb, resource, user.",
+			// This metric is used for verifying api call latencies SLO,
+			// as well as tracking regressions in this aspects.
+			// Thus we customize buckets significantly, to empower both usecases.
+			Buckets:        []float64{0.01, 0.05, 0.1, 0.5, 1.0, 5, 10, 30, 60, 120, 180, 600},
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"serverName", "verb", "resource", "flowcontrol", "user", "priority"},
 	)
 	proxyResponseSizes = compbasemetrics.NewHistogramVec(
 		&compbasemetrics.HistogramOpts{
@@ -99,6 +145,16 @@ var (
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{"pid", "serverName", "verb", "code", "reason", "resource", "flowcontrol"},
+	)
+	proxyRequestUserTerminations = compbasemetrics.NewCounterVec(
+		&compbasemetrics.CounterOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "apiserver_request_terminations_total_with_user",
+			Help:           "Terminated requests number with user.",
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"serverName", "verb", "code", "reason", "resource", "flowcontrol", "user"},
 	)
 	// proxyRegisteredWatchers is a number of currently registered watchers splitted by resource.
 	proxyRegisteredWatchers = compbasemetrics.NewGaugeVec(
@@ -158,8 +214,8 @@ var (
 		[]string{"pid"},
 	)
 
-	// proxyRequestThroughput is the total http data size request and response in bytes
-	proxyRequestThroughput = compbasemetrics.NewGaugeVec(
+	// proxyRequestTotalDataSize is the total http data size request and response in bytes
+	proxyRequestTotalDataSize = compbasemetrics.NewGaugeVec(
 		&compbasemetrics.GaugeOpts{
 			Namespace:      namespace,
 			Subsystem:      subsystem,
@@ -168,6 +224,18 @@ var (
 			StabilityLevel: compbasemetrics.ALPHA,
 		},
 		[]string{"pid", "type"},
+	)
+
+	// proxyRequestUserDataSize is the http data size request and response in bytes
+	proxyRequestUserDataSize = compbasemetrics.NewGaugeVec(
+		&compbasemetrics.GaugeOpts{
+			Namespace:      namespace,
+			Subsystem:      subsystem,
+			Name:           "http_data_size_bytes_with_user",
+			Help:           "The http data size for each serverName, verb, resource, user",
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"type", "serverName", "verb", "resource", "flowcontrol", "user"},
 	)
 
 	proxyHandlingLatencies = compbasemetrics.NewHistogramVec(
@@ -183,6 +251,19 @@ var (
 		[]string{"pid", "serverName", "verb", "resource", "stage"},
 	)
 
+	proxyUserClientOverCostLatencies = compbasemetrics.NewHistogramVec(
+		&compbasemetrics.HistogramOpts{
+			Namespace: namespace,
+			Subsystem: subsystem,
+			Name:      "user_client_over_cost_seconds",
+			Help:      "User client over cost (client_cost - upstream_cost) for each serverName, verb, resource, user.",
+			// Start with 1ms with the last bucket being [~10s, Inf)
+			Buckets:        []float64{0.01, 0.05, 0.1, 0.5, 1.0, 5, 10, 30, 60},
+			StabilityLevel: compbasemetrics.ALPHA,
+		},
+		[]string{"serverName", "verb", "resource", "user"},
+	)
+
 	localMetrics = []compbasemetrics.Registerable{
 		proxyReceiveRequestCounter,
 		proxyRequestCounter,
@@ -190,13 +271,19 @@ var (
 		proxyResponseSizes,
 		proxyUpstreamUnhealthy,
 		proxyRequestTerminationsTotal,
+		proxyRequestUserTerminations,
 		proxyRegisteredWatchers,
 		proxyRateLimiterRequestCounter,
 		proxyGlobalFlowControlRequestCounter,
 		proxyRequestInflight,
 		proxyRequestRate,
-		proxyRequestThroughput,
+		proxyRequestTotalDataSize,
+		proxyRequestUserDataSize,
 		proxyHandlingLatencies,
+		proxyUserRequestCounter,
+		proxyUserRequestLoad,
+		proxyRequestUserLatencies,
+		proxyUserClientOverCostLatencies,
 	}
 )
 
@@ -224,7 +311,8 @@ func Register() {
 		ProxyRateLimiterRequestCounterObservers.AddObserver(&proxyRateLimiterRequestCounterObserver{})
 		ProxyGlobalFlowControlAcquireObservers.AddObserver(&proxyGlobalFlowControlAcquireObserver{})
 		ProxyRequestInflightObservers.AddObserver(&proxyRequestInflightObserver{})
-		ProxyRequestThroughputObservers.AddObserver(&proxyRequestThroughputObserver{})
+		ProxyRequestTotalDataSizeObservers.AddObserver(&proxyRequestTotalDataSizeObserver{})
+		ProxyRequestDataSizeObservers.AddObserver(&proxyRequestDataSizeObserver{})
 		ProxyHandlingLatencyObservers.AddObserver(&proxyHandlingLatenciesObserver{})
 	})
 }
@@ -245,12 +333,23 @@ type proxyRequestCounterObserver struct{}
 
 func (o *proxyRequestCounterObserver) Observe(metric MetricInfo) {
 	proxyRequestCounter.WithLabelValues(proxyPid, metric.ServerName, metric.Endpoint, metric.Verb, metric.Resource, metric.HttpCode, metric.FlowControl).Inc()
+
+	if enableRequestMetricByUser {
+		proxyUserRequestCounter.WithLabelValues(metric.ServerName, metric.Verb, metric.Resource, metric.HttpCode, metric.FlowControl, metric.UserName).Inc()
+		if !metric.IsLongRunning {
+			proxyUserRequestLoad.WithLabelValues(metric.ServerName, metric.Verb, metric.Resource, metric.HttpCode, metric.FlowControl, metric.UserName).Add(metric.Latency)
+		}
+	}
 }
 
 type proxyRequestLatenciesObserver struct{}
 
 func (o *proxyRequestLatenciesObserver) Observe(metric MetricInfo) {
 	proxyRequestLatencies.WithLabelValues(proxyPid, metric.ServerName, metric.Endpoint, metric.Verb, metric.Resource).Observe(metric.Latency)
+
+	if enableRequestMetricByUser {
+		proxyRequestUserLatencies.WithLabelValues(metric.ServerName, metric.Verb, metric.Resource, metric.FlowControl, metric.UserName, "default").Observe(metric.Latency)
+	}
 }
 
 type proxyResponseSizesObserver struct{}
@@ -263,6 +362,9 @@ type proxyRequestTerminationsObserver struct{}
 
 func (o *proxyRequestTerminationsObserver) Observe(metric MetricInfo) {
 	proxyRequestTerminationsTotal.WithLabelValues(proxyPid, metric.ServerName, metric.Verb, metric.HttpCode, metric.Reason, metric.Resource, metric.FlowControl).Inc()
+	if enableRequestMetricByUser {
+		proxyRequestUserTerminations.WithLabelValues(metric.ServerName, metric.Verb, metric.HttpCode, metric.Reason, metric.Resource, metric.FlowControl, metric.UserName).Inc()
+	}
 }
 
 type proxyWatcherRegisteredObserver struct{}
@@ -296,11 +398,20 @@ func (o *proxyRequestInflightObserver) Observe(metric MetricInfo) {
 	proxyRequestRate.WithLabelValues(proxyPid).Set(metric.Rate)
 }
 
-type proxyRequestThroughputObserver struct{}
+type proxyRequestTotalDataSizeObserver struct{}
 
-func (o *proxyRequestThroughputObserver) Observe(metric MetricInfo) {
-	proxyRequestThroughput.WithLabelValues(proxyPid, "request").Set(float64(metric.RequestSize))
-	proxyRequestThroughput.WithLabelValues(proxyPid, "response").Set(float64(metric.ResponseSize))
+func (o *proxyRequestTotalDataSizeObserver) Observe(metric MetricInfo) {
+	proxyRequestTotalDataSize.WithLabelValues(proxyPid, "request").Set(float64(metric.RequestSize))
+	proxyRequestTotalDataSize.WithLabelValues(proxyPid, "response").Set(float64(metric.ResponseSize))
+}
+
+type proxyRequestDataSizeObserver struct{}
+
+func (o *proxyRequestDataSizeObserver) Observe(metric MetricInfo) {
+	if enableRequestMetricByUser {
+		proxyRequestUserDataSize.WithLabelValues("request", metric.ServerName, metric.Verb, metric.Resource, metric.FlowControl, metric.UserName).Set(float64(metric.RequestSize))
+		proxyRequestUserDataSize.WithLabelValues("response", metric.ServerName, metric.Verb, metric.Resource, metric.FlowControl, metric.UserName).Set(float64(metric.ResponseSize))
+	}
 }
 
 type proxyHandlingLatenciesObserver struct{}
@@ -308,4 +419,12 @@ type proxyHandlingLatenciesObserver struct{}
 func (o *proxyHandlingLatenciesObserver) Observe(metric MetricInfo) {
 	proxyHandlingLatencies.WithLabelValues(proxyPid, metric.ServerName, metric.Verb, metric.Resource, tracing.MetricStageHandlingDelay).
 		Observe(metric.TraceLatencies[tracing.MetricStageHandlingDelay].Seconds())
+
+	if enableRequestMetricByUser {
+		overCostLatency := metric.TraceLatencies[tracing.MetricStageClientOverCost]
+		if overCostLatency > time.Millisecond {
+			proxyUserClientOverCostLatencies.WithLabelValues(metric.ServerName, metric.Verb, metric.Resource, metric.UserName).
+				Observe(metric.TraceLatencies[tracing.MetricStageClientOverCost].Seconds())
+		}
+	}
 }

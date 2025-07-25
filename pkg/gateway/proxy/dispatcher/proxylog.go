@@ -15,7 +15,6 @@
 package dispatcher
 
 import (
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -23,7 +22,6 @@ import (
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/endpoints/request"
-	"k8s.io/apiserver/pkg/endpoints/responsewriter"
 	"k8s.io/klog"
 
 	"github.com/kubewharf/apiserver-runtime/pkg/server"
@@ -32,18 +30,9 @@ import (
 	"github.com/kubewharf/kubegateway/pkg/util/tracing"
 )
 
-var _ http.ResponseWriter = &responseWriterDelegator{}
-var _ responsewriter.UserProvidedDecorator = &responseWriterDelegator{}
-
-// Add a layer on top of ResponseWriter, so we can track latency, statusCode
-// and error message sources.
-type responseWriterDelegator struct {
-	statusRecorded     bool
-	status             int
-	addedInfo          string
-	startTime          time.Time
-	captureErrorOutput bool
-
+// proxy log and metrics
+type proxyRequestMonitor struct {
+	startTime       time.Time
 	logging         bool
 	host            string
 	endpoint        string
@@ -51,81 +40,46 @@ type responseWriterDelegator struct {
 	user            user.Info
 	impersonator    user.Info
 
-	req         *http.Request
-	requestInfo *request.RequestInfo
-	w           http.ResponseWriter
-
-	written int64
+	req              *http.Request
+	requestInfo      *request.RequestInfo
+	extraRequestInfo *gatewayrequest.ExtraRequestInfo
+	w                http.ResponseWriter
 }
 
-func decorateResponseWriter(
+func requestMonitor(
 	req *http.Request,
 	w http.ResponseWriter,
 	logging bool,
 	requestInfo *request.RequestInfo,
-	host, endpoint string,
+	extraInfo *gatewayrequest.ExtraRequestInfo,
+	endpoint string,
 	user, impersonator user.Info,
 	flowControlName string,
-) *responseWriterDelegator {
-	return &responseWriterDelegator{
-		startTime:       time.Now(),
-		req:             req,
-		w:               w,
-		logging:         logging,
-		requestInfo:     requestInfo,
-		host:            host,
-		endpoint:        endpoint,
-		flowControlName: flowControlName,
-		user:            user,
-		impersonator:    impersonator,
+) *proxyRequestMonitor {
+	return &proxyRequestMonitor{
+		startTime:        time.Now(),
+		req:              req,
+		w:                w,
+		logging:          logging,
+		requestInfo:      requestInfo,
+		extraRequestInfo: extraInfo,
+		host:             extraInfo.Hostname,
+		endpoint:         endpoint,
+		flowControlName:  flowControlName,
+		user:             user,
+		impersonator:     impersonator,
 	}
 }
 
-func (rw *responseWriterDelegator) Unwrap() http.ResponseWriter {
-	return rw.w
-}
-
-// Header implements http.ResponseWriter.
-func (rw *responseWriterDelegator) Header() http.Header {
-	return rw.w.Header()
-}
-
-// WriteHeader implements http.ResponseWriter.
-func (rw *responseWriterDelegator) WriteHeader(status int) {
-	rw.recordStatus(status)
-	rw.w.WriteHeader(status)
-}
-
-// Write implements http.ResponseWriter.
-func (rw *responseWriterDelegator) Write(b []byte) (int, error) {
-	if !rw.statusRecorded {
-		rw.recordStatus(http.StatusOK) // Default if WriteHeader hasn't been called
-	}
-	if rw.captureErrorOutput {
-		rw.debugf("logging error output: %q\n", string(b))
-	}
-	n, err := rw.w.Write(b)
-	rw.written += int64(n)
-	return n, err
-}
-
-func (rw *responseWriterDelegator) Status() int {
-	return rw.status
-}
-
-func (rw *responseWriterDelegator) ContentLength() int {
-	return int(rw.written)
-}
-
-func (rw *responseWriterDelegator) Elapsed() time.Duration {
+func (rw *proxyRequestMonitor) Elapsed() time.Duration {
 	return time.Since(rw.startTime)
 }
 
-func (rw *responseWriterDelegator) isWatch() bool {
+func (rw *proxyRequestMonitor) isWatch() bool {
 	return rw.requestInfo.IsResourceRequest && rw.requestInfo.Verb == "watch"
 }
 
-func (rw *responseWriterDelegator) MonitorBeforeProxy() {
+func (rw *proxyRequestMonitor) MonitorBeforeProxy() {
 	if rw.isWatch() {
 		metrics.RecordWatcherRegistered(rw.host, rw.endpoint, rw.requestInfo.Resource)
 		//TODO: log watch requests before proxy
@@ -133,13 +87,27 @@ func (rw *responseWriterDelegator) MonitorBeforeProxy() {
 	// TODO: add a metrics before request forwarded
 }
 
-func (rw *responseWriterDelegator) MonitorAfterProxy() {
+func (rw *proxyRequestMonitor) MonitorAfterProxy() {
 	if rw.isWatch() {
 		metrics.RecordWatcherUnregistered(rw.host, rw.endpoint, rw.requestInfo.Resource)
 	}
 
 	if !gatewayrequest.IsProxyForwarded(rw.req.Context()) {
 		return
+	}
+
+	userInfo := rw.user
+	if rw.impersonator != nil {
+		userInfo = rw.impersonator
+	}
+
+	var requestSize int
+	var responseSize int
+	var status int
+	if readerWriter := rw.extraRequestInfo.ReaderWriter; readerWriter != nil {
+		requestSize = readerWriter.RequestSize()
+		responseSize = readerWriter.ResponseSize()
+		status = readerWriter.Status()
 	}
 
 	// we only monitor forwarded proxy reqeust here
@@ -149,21 +117,32 @@ func (rw *responseWriterDelegator) MonitorAfterProxy() {
 		rw.endpoint,
 		rw.flowControlName,
 		rw.requestInfo,
-		rw.Header().Get("Content-Type"),
-		rw.Status(),
-		rw.ContentLength(),
+		userInfo,
+		rw.extraRequestInfo.IsLongRunningRequest,
+		rw.w.Header().Get("Content-Type"),
+		status,
+		requestSize,
+		responseSize,
 		rw.Elapsed(),
 	)
 	rw.Log()
 }
 
 // Log is intended to be called once at the end of your request handler, via defer
-func (rw *responseWriterDelegator) Log() {
+func (rw *proxyRequestMonitor) Log() {
 	latency := rw.Elapsed()
 	logging := rw.logging
 	verb := strings.ToUpper(rw.requestInfo.Verb)
 	isLongRunning := server.DefaultLongRunningFunc(rw.req, rw.requestInfo)
-	if proxyLogPred(rw.status, verb, latency, isLongRunning) {
+
+	var status int
+	var addedInfo string
+	if readerWriter := rw.extraRequestInfo.ReaderWriter; readerWriter != nil {
+		status = readerWriter.Status()
+		addedInfo = readerWriter.AddedInfo()
+	}
+
+	if proxyLogPred(status, verb, latency, isLongRunning) {
 		logging = true
 	}
 	if !logging {
@@ -179,7 +158,7 @@ func (rw *responseWriterDelegator) Log() {
 			rw.endpoint,
 			rw.req.RequestURI,
 			latency,
-			rw.status,
+			status,
 			rw.user.GetName(),
 			rw.user.GetGroups(),
 			rw.req.UserAgent(),
@@ -187,7 +166,7 @@ func (rw *responseWriterDelegator) Log() {
 			rw.impersonator.GetGroups(),
 			sourceIPs,
 			traceId,
-			rw.addedInfo,
+			addedInfo,
 		)
 	} else {
 		klog.Infof("verb=%q host=%q endpoint=%q URI=%q latency=%v resp=%v user=%q userGroup=%v userAgent=%q srcIP=%v traceId=%v: %v",
@@ -196,26 +175,15 @@ func (rw *responseWriterDelegator) Log() {
 			rw.endpoint,
 			rw.req.RequestURI,
 			latency,
-			rw.status,
+			status,
 			rw.user.GetName(),
 			rw.user.GetGroups(),
 			rw.req.UserAgent(),
 			sourceIPs,
 			traceId,
-			rw.addedInfo,
+			addedInfo,
 		)
 	}
-}
-
-func (rw *responseWriterDelegator) recordStatus(status int) {
-	rw.status = status
-	rw.statusRecorded = true
-	rw.captureErrorOutput = captureErrorOutput(status)
-}
-
-// debugf adds additional data to be logged with this request.
-func (rw *responseWriterDelegator) debugf(format string, data ...interface{}) {
-	rw.addedInfo += "\n" + fmt.Sprintf(format, data...)
 }
 
 func captureErrorOutput(code int) bool {
