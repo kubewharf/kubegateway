@@ -268,6 +268,15 @@ func TestUserOrServiceAccountMatches(t *testing.T) {
 			true,
 		},
 		{
+			"match user suffix",
+			args{
+				[]string{"user-*"},
+				nil,
+				"user-test1",
+			},
+			true,
+		},
+		{
 			"match service account",
 			args{
 				[]string{},

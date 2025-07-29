@@ -71,7 +71,12 @@ func UserOrServiceAccountMatches(users []string, serviceAccounts []ServiceAccoun
 		return true
 	}
 
-	if simpleMatches(users, []string{requestUser}) {
+	if simpleMatches(users, []string{requestUser}, func(m matcher) bool {
+		if strings.HasSuffix(m.value, "*") && strings.HasPrefix(requestUser, strings.TrimRight(m.value, "*")) {
+			return true
+		}
+		return false
+	}) {
 		return true
 	}
 
