@@ -82,6 +82,12 @@ spec:
                       like 0.01 (qps:1, qpsDivisor:100)
                     format: int32
                     type: integer
+                  serverName:
+                    description: ServerName is passed to the server for SNI and is
+                      used in the client to check server ceritificates against. If
+                      ServerName is empty, the upstreamcluster name used to contact
+                      the server is used.
+                    type: string
                 type: object
               dispatchPolicies:
                 description: DispatchPolicies describes how to dispatch requests to
@@ -325,6 +331,12 @@ spec:
                       string
                     format: byte
                     type: string
+                  serverNames:
+                    description: ServerNames are used to route requests with different
+                      hostnames for the same upstream cluster.
+                    items:
+                      type: string
+                    type: array
                 type: object
               servers:
                 description: Servers contains a group of upstream api servers

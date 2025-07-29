@@ -62,6 +62,11 @@ message ClientConfig {
   // It allows you to set a more precise qps, like 0.01 (qps:1, qpsDivisor:100)
   // +optional
   optional int32 qpsDivisor = 8;
+
+  // ServerName is passed to the server for SNI and is used in the client to check server
+  // ceritificates against. If ServerName is empty, the upstreamcluster name used to contact the
+  // server is used.
+  optional string serverName = 9;
 }
 
 message DispatchPolicy {
@@ -271,6 +276,9 @@ message RateLimitAcquireSpec {
 
   // Limit tokens requested
   repeated RateLimitAcquireRequest requests = 2;
+
+  // Request id
+  optional int64 requestID = 3;
 }
 
 // RateLimitAcquireStatus defines the response body for acquire
@@ -369,6 +377,9 @@ message SecureServing {
   // ClientCAData contains PEM-encoded data from a ca file for TLS.
   // The serialized form of data is a base64 encoded string
   optional bytes clientCAData = 3;
+
+  // ServerNames are used to route requests with different hostnames for the same upstream cluster.
+  repeated string serverNames = 4;
 }
 
 message ServiceAccountRef {

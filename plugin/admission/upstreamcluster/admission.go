@@ -16,7 +16,10 @@ package upstreamclusteradmission
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apiserver/pkg/admission"
 	genericadmissioninitializer "k8s.io/apiserver/pkg/admission/initializer"
@@ -25,7 +28,11 @@ import (
 
 	proxyv1alpha1 "github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1"
 	"github.com/kubewharf/kubegateway/pkg/apis/proxy/v1alpha1/validation"
+	gatewayinformers "github.com/kubewharf/kubegateway/pkg/client/informers"
+	gatewayclientset "github.com/kubewharf/kubegateway/pkg/client/kubernetes"
+	proxylisters "github.com/kubewharf/kubegateway/pkg/client/listers/proxy/v1alpha1"
 	"github.com/kubewharf/kubegateway/pkg/clusters/features"
+	"github.com/kubewharf/kubegateway/pkg/gateway/controlplane/admission/initializer"
 )
 
 var _ admission.Interface = &upstreamclusterPlugin{}
@@ -33,6 +40,8 @@ var _ admission.MutationInterface = &upstreamclusterPlugin{}
 var _ admission.ValidationInterface = &upstreamclusterPlugin{}
 var _ genericadmissioninitializer.WantsExternalKubeInformerFactory = &upstreamclusterPlugin{}
 var _ genericadmissioninitializer.WantsExternalKubeClientSet = &upstreamclusterPlugin{}
+var _ initializer.WantsGatewayResourceClientSet = &upstreamclusterPlugin{}
+var _ initializer.WantsGatewayResourceInformerFactory = &upstreamclusterPlugin{}
 
 func NewUpstreamClusterPlugin() admission.Interface {
 	return &upstreamclusterPlugin{
@@ -42,6 +51,7 @@ func NewUpstreamClusterPlugin() admission.Interface {
 
 type upstreamclusterPlugin struct {
 	*admission.Handler
+	lister proxylisters.UpstreamClusterLister
 }
 
 func (p *upstreamclusterPlugin) ValidateInitialization() error {
@@ -84,12 +94,49 @@ func (p *upstreamclusterPlugin) Validate(ctx context.Context, a admission.Attrib
 		}
 	}
 
+	// we need to wait for our caches to warm
+	if !p.WaitForReady() {
+		return admission.NewForbidden(a, fmt.Errorf("not yet ready to validate request"))
+	}
+
+	// check conflict
+
+	clusterName := strings.ToLower(cluster.Name)
+	clusters, err := p.lister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("failed to list upstream clusters %v", err)
+	}
+	for _, upstreamCluster := range clusters {
+		if strings.ToLower(upstreamCluster.Name) == clusterName {
+			continue
+		}
+		for _, s := range append([]string{upstreamCluster.Name}, upstreamCluster.Spec.SecureServing.ServerNames...) {
+			if strings.ToLower(clusterName) == strings.ToLower(s) {
+				allErrs = append(allErrs, field.Invalid(field.NewPath("metadata").Child("name"), clusterName, fmt.Sprintf("conflict with cluster %s %v", upstreamCluster.Name, upstreamCluster.Spec.SecureServing.ServerNames)))
+			}
+
+			for _, serverName := range cluster.Spec.SecureServing.ServerNames {
+				if strings.ToLower(serverName) == strings.ToLower(s) {
+					allErrs = append(allErrs, field.Invalid(field.NewPath("spec").Child("secureServing").Child("serverNames"), cluster.Spec.SecureServing.ServerNames, fmt.Sprintf("conflict with cluster %s %v", upstreamCluster.Name, upstreamCluster.Spec.SecureServing.ServerNames)))
+				}
+			}
+		}
+	}
+
 	return allErrs.ToAggregate()
 }
 
 func (p *upstreamclusterPlugin) SetExternalKubeInformerFactory(informers.SharedInformerFactory) {}
 
 func (p *upstreamclusterPlugin) SetExternalKubeClientSet(kubernetes.Interface) {}
+
+func (p *upstreamclusterPlugin) SetGatewayResourceInformerFactory(factory gatewayinformers.SharedInformerFactory) {
+	informer := factory.Proxy().V1alpha1().UpstreamClusters()
+	p.lister = informer.Lister()
+	p.SetReadyFunc(informer.Informer().HasSynced)
+}
+
+func (p *upstreamclusterPlugin) SetGatewayResourceClientSet(g gatewayclientset.Interface) {}
 
 func shouldIgnore(a admission.Attributes) bool {
 	if a.GetResource().GroupResource() != proxyv1alpha1.Resource("upstreamclusters") {

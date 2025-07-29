@@ -118,6 +118,9 @@ type ClusterInfo struct {
 	// server Cluster
 	Cluster string
 
+	// serverNames are used to route requests with different hostnames
+	serverNames sync.Map
+
 	// global rate limiter type
 	globalRateLimiter string
 
@@ -232,6 +235,18 @@ func (c *ClusterInfo) LoadVerifyOptions() (x509.VerifyOptions, bool) {
 		return empty, false
 	}
 	return *cfg.verifyOptions, true
+}
+
+func (c *ClusterInfo) LoadServerNames() []string {
+	var serverNames = []string{c.Cluster}
+	cfg, ok := c.loadSecureServingConfig()
+	if ok {
+		for _, serverName := range cfg.secureServing.ServerNames {
+			serverNames = append(serverNames, strings.ToLower(serverName))
+		}
+	}
+
+	return serverNames
 }
 
 func (c *ClusterInfo) loadSecureServingConfig() (secureServingConfig, bool) {
