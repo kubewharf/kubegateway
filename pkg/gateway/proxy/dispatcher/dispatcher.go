@@ -26,7 +26,6 @@ import (
 	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apiserver/pkg/endpoints/filters"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
-	"k8s.io/apiserver/pkg/endpoints/responsewriter"
 	"k8s.io/client-go/kubernetes/scheme"
 
 	"github.com/kubewharf/kubegateway/pkg/clusters"
@@ -87,7 +86,7 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	_ = request.SetFlowControl(req.Context(), endpointPicker.FlowControlName())
+	_ = request.SetProxyInfo(req.Context(), endpointPicker.FlowControlName(), user)
 
 	flowcontrol := endpointPicker.FlowControl()
 	if !flowcontrol.TryAcquire() {
@@ -144,15 +143,14 @@ func (d *dispatcher) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}()
 
 	logging := d.enableAccessLog && endpointPicker.EnableLog()
-	delegate := decorateResponseWriter(req, w, logging, requestInfo, extraInfo.Hostname, endpoint.Endpoint, user, extraInfo.Impersonator, endpointPicker.FlowControlName())
-	delegate.MonitorBeforeProxy()
-	defer delegate.MonitorAfterProxy()
+	monitor := requestMonitor(req, w, logging, requestInfo, extraInfo, endpoint.Endpoint, user, extraInfo.Impersonator, endpointPicker.FlowControlName())
+	monitor.MonitorBeforeProxy()
+	defer monitor.MonitorAfterProxy()
 
-	rw := responsewriter.WrapForHTTP1Or2(delegate)
-	responder := newErrorResponder(d.codecs, endpoint, requestInfo, delegate)
+	responder := newErrorResponder(d.codecs, endpoint, requestInfo, extraInfo.ReaderWriter)
 
 	proxyHandler := NewUpgradeAwareHandler(location, endpoint.ProxyTransport, endpoint.PorxyUpgradeTransport, false, false, responder)
-	proxyHandler.ServeHTTP(rw, newReq)
+	proxyHandler.ServeHTTP(w, newReq)
 }
 
 func (d *dispatcher) responseError(err *errors.StatusError, w http.ResponseWriter, req *http.Request, reason string) {

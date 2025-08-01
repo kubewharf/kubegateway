@@ -17,6 +17,8 @@ package request
 import (
 	"context"
 	"fmt"
+
+	"k8s.io/apiserver/pkg/authentication/user"
 )
 
 // ProxyInfo contains information that indicates if the request is proxied
@@ -25,6 +27,7 @@ type ProxyInfo struct {
 	Endpoint    string
 	Reason      string
 	FlowControl string
+	User        user.Info
 }
 
 func NewProxyInfo() *ProxyInfo {
@@ -44,12 +47,13 @@ func ExtraProxyInfoFrom(ctx context.Context) (*ProxyInfo, bool) {
 	return info, ok
 }
 
-func SetFlowControl(ctx context.Context, flowControl string) error {
+func SetProxyInfo(ctx context.Context, flowControl string, user user.Info) error {
 	info, ok := ExtraProxyInfoFrom(ctx)
 	if !ok {
 		return fmt.Errorf("no proxy info found in context")
 	}
 	info.FlowControl = flowControl
+	info.User = user
 	return nil
 }
 

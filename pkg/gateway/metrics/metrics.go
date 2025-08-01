@@ -22,6 +22,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/types"
 	utilsets "k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/endpoints/request"
 	genericapirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/features"
@@ -88,7 +89,15 @@ func RecordProxyRequestReceived(req *http.Request, serverName string, requestInf
 
 // MonitorProxyRequest handles standard transformations for client and the reported verb and then invokes Monitor to record
 // a request. verb must be uppercase to be backwards compatible with existing monitoring tooling.
-func MonitorProxyRequest(req *http.Request, serverName, endpoint, flowControl string, requestInfo *request.RequestInfo, contentType string, httpCode, respSize int, elapsed time.Duration) {
+func MonitorProxyRequest(req *http.Request, serverName, endpoint, flowControl string,
+	requestInfo *request.RequestInfo,
+	user user.Info,
+	isLongRunning bool,
+	contentType string,
+	httpCode,
+	reqSize,
+	respSize int,
+	elapsed time.Duration) {
 	if requestInfo == nil {
 		requestInfo = &request.RequestInfo{Verb: req.Method, Path: req.URL.Path}
 	}
@@ -104,43 +113,40 @@ func MonitorProxyRequest(req *http.Request, serverName, endpoint, flowControl st
 		}
 	}
 
-	ProxyRequestCounterObservers.Observe(MetricInfo{
-		ServerName:  serverName,
-		Endpoint:    endpoint,
-		FlowControl: flowControl,
-		Verb:        verb,
-		Resource:    resource,
-		HttpCode:    codeToString(httpCode),
-		Latency:     elapsedSeconds,
-		Request:     req,
-	})
-	ProxyRequestLatenciesObservers.Observe(MetricInfo{
-		ServerName:  serverName,
-		Endpoint:    endpoint,
-		FlowControl: flowControl,
-		Verb:        verb,
-		Resource:    resource,
-		Latency:     elapsedSeconds,
-		Request:     req,
-	})
+	userName := cleanUserForMetric(user)
+
+	metricInfo := MetricInfo{
+		ServerName:    serverName,
+		Endpoint:      endpoint,
+		FlowControl:   flowControl,
+		Verb:          verb,
+		Resource:      resource,
+		ResponseSize:  int64(respSize),
+		RequestSize:   int64(reqSize),
+		HttpCode:      codeToString(httpCode),
+		Latency:       elapsedSeconds,
+		Request:       req,
+		RequestInfo:   requestInfo,
+		IsLongRunning: isLongRunning,
+		User:          user,
+		UserName:      userName,
+	}
+
+	ProxyRequestCounterObservers.Observe(metricInfo)
+	ProxyRequestLatenciesObservers.Observe(metricInfo)
 
 	if requestInfo.IsResourceRequest {
-		ProxyResponseSizesObservers.Observe(MetricInfo{
-			ServerName:   serverName,
-			Endpoint:     endpoint,
-			Verb:         verb,
-			Resource:     resource,
-			ResponseSize: int64(respSize),
-			Request:      req,
-		})
+		ProxyResponseSizesObservers.Observe(metricInfo)
 	}
+
+	ProxyRequestDataSizeObservers.Observe(metricInfo)
 }
 
 // RecordProxyRequestTermination records that the request was terminated early as part of a resource
 // preservation or apiserver self-defense mechanism (e.g. timeouts, maxinflight throttling,
 // proxyHandler errors). RecordProxyRequestTermination should only be called zero or one times
 // per request.
-func RecordProxyRequestTermination(req *http.Request, code int, reason, flowControl string) {
+func RecordProxyRequestTermination(req *http.Request, code int, reason, flowControl string, user user.Info) {
 	requestInfo, ok := genericapirequest.RequestInfoFrom(req.Context())
 	if !ok {
 		requestInfo = &request.RequestInfo{Verb: req.Method, Path: req.URL.Path}
@@ -159,6 +165,8 @@ func RecordProxyRequestTermination(req *http.Request, code int, reason, flowCont
 	serverName := net.HostWithoutPort(req.Host)
 	resource := cleanResource(requestInfo)
 
+	userName := cleanUserForMetric(user)
+
 	ProxyRequestTerminationsObservers.Observe(MetricInfo{
 		ServerName:  serverName,
 		FlowControl: flowControl,
@@ -168,6 +176,8 @@ func RecordProxyRequestTermination(req *http.Request, code int, reason, flowCont
 		Reason:      reason,
 		Resource:    resource,
 		Request:     req,
+		User:        user,
+		UserName:    userName,
 	})
 }
 
@@ -287,20 +297,39 @@ func RecordProxyRateAndInflight(rate float64, inflight int32) {
 }
 
 func RecordRequestThroughput(requestSizeTotal, responseSizeTotal int64) {
-	ProxyRequestThroughputObservers.Observe(MetricInfo{
+	ProxyRequestTotalDataSizeObservers.Observe(MetricInfo{
 		RequestSize:  requestSizeTotal,
 		ResponseSize: responseSizeTotal,
 	})
 }
 
-func RecordProxyTraceLatency(traceLatencies map[string]time.Duration, serverName string, requestInfo *request.RequestInfo) {
+func RecordProxyTraceLatency(traceLatencies map[string]time.Duration, serverName string, requestInfo *request.RequestInfo, user user.Info, req *http.Request) {
 	verb := strings.ToUpper(requestInfo.Verb)
 	resource := cleanResource(requestInfo)
+	userName := cleanUserForMetric(user)
+
 	metric := MetricInfo{
 		ServerName:     serverName,
 		Verb:           verb,
 		Resource:       resource,
 		TraceLatencies: traceLatencies,
+		Request:        req,
+		User:           user,
+		UserName:       userName,
 	}
 	ProxyHandlingLatencyObservers.Observe(metric)
+}
+
+func cleanUserForMetric(user user.Info) string {
+	if user == nil {
+		return "anonymous"
+	}
+	userName := user.GetName()
+	for _, ug := range user.GetGroups() {
+		if strings.Contains(ug, "system:nodes") {
+			userName = ug
+			break
+		}
+	}
+	return userName
 }

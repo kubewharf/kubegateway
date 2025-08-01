@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	utilnet "k8s.io/apimachinery/pkg/util/net"
+	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/endpoints/handlers/responsewriters"
 	apirequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/klog"
@@ -61,11 +62,16 @@ func WithTraceLog(handler http.Handler, enableTracing bool, longRunningRequestCh
 		defer func() {
 			tr.End()
 
-			metrics.RecordProxyTraceLatency(tr.StageLatency(), extraInfo.Hostname, requestInfo)
+			proxyInfo, ok := request.ExtraProxyInfoFrom(req.Context())
+			var userInfo user.Info
+			if ok {
+				userInfo = proxyInfo.User
+			}
+			metrics.RecordProxyTraceLatency(tr.StageLatency(), extraInfo.Hostname, requestInfo, userInfo, req)
 
 			threshold := request.LogThreshold(requestInfo.Verb)
 			if req.Header.Get("x-debug-trace-log") == "1" || tr.IfLong(threshold) {
-				tr.WithAttributes(traceFields(req, requestInfo)...)
+				tr.WithAttributes(traceFields(req, requestInfo, userInfo)...)
 				tr.Log()
 			}
 		}()
@@ -80,13 +86,21 @@ func WithTraceLog(handler http.Handler, enableTracing bool, longRunningRequestCh
 	})
 }
 
-func traceFields(req *http.Request, requestInfo *apirequest.RequestInfo) []tracing.KeyValue {
+func traceFields(req *http.Request, requestInfo *apirequest.RequestInfo, user user.Info) []tracing.KeyValue {
 	sourceIPs := utilnet.SourceIPs(req)
+	userName := "anonymous"
+	userGroup := []string{"anonymous"}
+	if user != nil {
+		userName = user.GetName()
+		userGroup = user.GetGroups()
+	}
 	return []tracing.KeyValue{
 		tracing.StringKeyValue("verb", requestInfo.Verb),
 		tracing.StringKeyValue("resource", requestInfo.Resource),
 		tracing.StringKeyValue("name", requestInfo.Name),
 		tracing.StringKeyValue("host", req.Host),
+		tracing.StringKeyValue("user-name", userName),
+		tracing.StringKeyValue("user-group", fmt.Sprintf("%v", userGroup)),
 		tracing.StringKeyValue("user-agent", req.Header.Get("User-Agent")),
 		tracing.StringKeyValue("srcIP", fmt.Sprintf("%v", sourceIPs)),
 	}
