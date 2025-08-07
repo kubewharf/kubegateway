@@ -84,6 +84,8 @@ type SecureServing struct {
 	// ClientCAData contains PEM-encoded data from a ca file for TLS.
 	// The serialized form of data is a base64 encoded string
 	ClientCAData []byte `json:"clientCAData,omitempty" protobuf:"bytes,3,opt,name=clientCAData"`
+	// ServerNames are used to route requests with different hostnames for the same upstream cluster.
+	ServerNames []string `json:"serverNames,omitempty" protobuf:"bytes,4,opt,name=serverNames"`
 }
 
 type ClientConfig struct {
@@ -114,6 +116,11 @@ type ClientConfig struct {
 	// It allows you to set a more precise qps, like 0.01 (qps:1, qpsDivisor:100)
 	// +optional
 	QPSDivisor int32 `json:"qpsDivisor,omitempty" protobuf:"varint,8,opt,name=qpsDivisor"`
+
+	// ServerName is passed to the server for SNI and is used in the client to check server
+	// ceritificates against. If ServerName is empty, the upstreamcluster name used to contact the
+	// server is used.
+	ServerName string `json:"serverName,omitempty" protobuf:"varint,9,opt,name=serverName"`
 }
 
 type FlowControl struct {

@@ -47,9 +47,14 @@ func buildClusterRESTConfig(cluster *proxyv1alpha1.UpstreamCluster) (*rest.Confi
 		cfg.RateLimiter = flowcontrol.NewTokenBucketRateLimiter(qps, int(cluster.Spec.ClientConfig.Burst))
 	}
 
+	serverName := cluster.Name
+	if len(cluster.Spec.ClientConfig.ServerName) > 0 {
+		serverName = cluster.Spec.ClientConfig.ServerName
+	}
+
 	if httpScheme == "https" {
 		tlsCfg := rest.TLSClientConfig{
-			ServerName: cluster.Name,
+			ServerName: serverName,
 			KeyData:    cluster.Spec.ClientConfig.KeyData,
 			CertData:   cluster.Spec.ClientConfig.CertData,
 			CAData:     cluster.Spec.ClientConfig.CAData,

@@ -30,8 +30,10 @@ type EndpointHealthCheck func(*EndpointInfo) (done bool)
 
 type Manager interface {
 	Add(*ClusterInfo)
+	AddWithKey(string, *ClusterInfo)
 	Get(name string) (*ClusterInfo, bool)
 	Delete(name string)
+	DeleteWithStop(name string)
 	DeleteAll()
 
 	ClientProvider
@@ -59,15 +61,27 @@ func (m *manager) Get(name string) (*ClusterInfo, bool) {
 }
 
 func (m *manager) Add(cluster *ClusterInfo) {
+	m.AddWithKey(cluster.Cluster, cluster)
+}
+
+func (m *manager) AddWithKey(key string, cluster *ClusterInfo) {
 	if cluster == nil {
 		return
 	}
-	cluster.Cluster = strings.ToLower(cluster.Cluster)
-	klog.V(1).Infof("[cluster manager] new cluster info is added, cluster=%q", cluster.Cluster)
-	m.clusters.Store(cluster.Cluster, cluster)
+	key = strings.ToLower(key)
+	klog.V(1).Infof("[cluster manager] new cluster info is added, cluster=%q [%q]", cluster.Cluster, key)
+	m.clusters.Store(key, cluster)
 }
 
 func (m *manager) Delete(name string) {
+	m.doDelete(name, false)
+}
+
+func (m *manager) DeleteWithStop(name string) {
+	m.doDelete(name, true)
+}
+
+func (m *manager) doDelete(name string, stop bool) {
 	name = strings.ToLower(name)
 	v, ok := m.clusters.LoadAndDelete(name)
 	if !ok {
@@ -75,8 +89,11 @@ func (m *manager) Delete(name string) {
 	}
 	// close all requests to this cluster
 	cluster := v.(*ClusterInfo)
-	cluster.Stop()
-	klog.V(1).Infof("[cluster manager] cluster info is deleted, cluster=%q", cluster.Cluster)
+	if stop {
+		cluster.Stop()
+	}
+
+	klog.V(1).Infof("[cluster manager] cluster info is deleted, cluster=%q [%q]", cluster.Cluster, name)
 }
 
 func (m *manager) DeleteAll() {
