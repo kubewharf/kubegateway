@@ -360,5 +360,16 @@ func GatewayHealthCheck(e *clusters.EndpointInfo) (done bool) {
 	}
 	klog.Errorf("upstream health check failed, cluster=%q endpoint=%q reason=%q message=%q", e.Cluster, e.Endpoint, reason, message)
 	e.UpdateStatus(false, reason, message)
+
+	const ResetTransportThreshold = 3
+	if err != nil &&
+		strings.Contains(err.Error(), "Client.Timeout or context cancellation while reading body") &&
+		e.GetUnhealthyCount() >= ResetTransportThreshold {
+		klog.Warningf("transport to endpoint %s hang", e.Endpoint)
+		if err := e.ResetTransport(); err != nil {
+			klog.Warningf("reset transport to endpoint %s error: %v", e.Endpoint, err)
+		}
+	}
+
 	return done
 }
