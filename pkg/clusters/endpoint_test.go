@@ -21,13 +21,13 @@ import (
 func TestEndpointInfo_ReadyAndReason(t *testing.T) {
 	tests := []struct {
 		name      string
-		status    endpointStatus
+		status    *endpointStatus
 		wantReady bool
 		want      string
 	}{
 		{
 			"ready",
-			endpointStatus{
+			&endpointStatus{
 				Disabled: false,
 				Healthy:  true,
 			},
@@ -36,7 +36,7 @@ func TestEndpointInfo_ReadyAndReason(t *testing.T) {
 		},
 		{
 			"disabled",
-			endpointStatus{
+			&endpointStatus{
 				Disabled: true,
 				Healthy:  true,
 			},
@@ -45,7 +45,7 @@ func TestEndpointInfo_ReadyAndReason(t *testing.T) {
 		},
 		{
 			"unhealthy",
-			endpointStatus{
+			&endpointStatus{
 				Disabled: false,
 				Healthy:  false,
 				Reason:   "Timeout",
@@ -69,5 +69,36 @@ func TestEndpointInfo_ReadyAndReason(t *testing.T) {
 				t.Errorf("EndpointInfo.UnreadyReason() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestEndpointInfo_UnhealthyCount(t *testing.T) {
+	e := &EndpointInfo{
+		Endpoint: "",
+		status: &endpointStatus{
+			Disabled: true,
+			Healthy:  true,
+		},
+	}
+	if e.GetUnhealthyCount() != 0 {
+		t.Errorf("unhealthy count should be 0, actual: %d", e.GetUnhealthyCount())
+	}
+
+	for i := 0; i < 2; i++ {
+		e.UpdateStatus(false, "mock error", "mock error message")
+		if e.GetUnhealthyCount() != i+1 {
+			t.Errorf("unhealthy count should be %d, actual: %d", i+1, e.GetUnhealthyCount())
+		}
+	}
+	e.UpdateStatus(true, "", "")
+	if e.GetUnhealthyCount() != 0 {
+		t.Errorf("unhealthy count should be 0, actual: %d", e.GetUnhealthyCount())
+	}
+
+	for i := 0; i < 5; i++ {
+		e.UpdateStatus(false, "mock error", "mock error message")
+		if e.GetUnhealthyCount() != i+1 {
+			t.Errorf("unhealthy count should be %d, actual: %d", i+1, e.GetUnhealthyCount())
+		}
 	}
 }

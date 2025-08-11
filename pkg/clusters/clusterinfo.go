@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/proxy"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/cert"
 	"k8s.io/component-base/featuregate"
@@ -118,9 +117,6 @@ type ClusterInfo struct {
 	// server Cluster
 	Cluster string
 
-	// serverNames are used to route requests with different hostnames
-	serverNames sync.Map
-
 	// global rate limiter type
 	globalRateLimiter string
 
@@ -144,9 +140,9 @@ type ClusterInfo struct {
 	currentLoggingConfig atomic.Value
 	featuregate          featuregate.MutableFeatureGate
 
-	healthCheckIntervalSeconds time.Duration
-	endpointHeathCheck         EndpointHealthCheck
-	skipSyncEndpoints          bool
+	healthCheckInterval time.Duration
+	endpointHeathCheck  EndpointHealthCheck
+	skipSyncEndpoints   bool
 }
 
 type secureServingConfig struct {
@@ -170,18 +166,18 @@ func NewEmptyClusterInfo(clusterName string, config *rest.Config, healthCheck En
 	limiter := gatewayflowcontrol.NewUpstreamLimiter(ctx, clusterName, "", clientSets)
 
 	info := &ClusterInfo{
-		ctx:                        ctx,
-		cancel:                     cancel,
-		Cluster:                    clusterName,
-		restConfig:                 config,
-		Endpoints:                  &EndpointInfoMap{data: sync.Map{}},
-		healthCheckIntervalSeconds: 5 * time.Second,
-		globalRateLimiter:          rateLimiter,
-		flowcontrol:                limiter,
-		loadbalancer:               sync.Map{},
-		endpointHeathCheck:         healthCheck,
-		skipSyncEndpoints:          skipEndpoints,
-		featuregate:                features.DefaultMutableFeatureGate.DeepCopy(),
+		ctx:                 ctx,
+		cancel:              cancel,
+		Cluster:             clusterName,
+		restConfig:          config,
+		Endpoints:           &EndpointInfoMap{data: sync.Map{}},
+		healthCheckInterval: 5 * time.Second,
+		globalRateLimiter:   rateLimiter,
+		flowcontrol:         limiter,
+		loadbalancer:        sync.Map{},
+		endpointHeathCheck:  healthCheck,
+		skipSyncEndpoints:   skipEndpoints,
+		featuregate:         features.DefaultMutableFeatureGate.DeepCopy(),
 	}
 	return info
 }
@@ -506,18 +502,13 @@ func (c *ClusterInfo) addOrUpdateEndpoint(endpoint string, disabled bool) error 
 	info, ok := c.Endpoints.Load(endpoint)
 	if ok {
 		info.SetDisabled(disabled)
-		EnsureGatewayHealthCheck(info, c.healthCheckIntervalSeconds, info.ctx)
+		EnsureGatewayHealthCheck(info, c.healthCheckInterval, info.ctx)
 		return nil
 	}
 
 	http2configCopy := *c.restConfig
 	http2configCopy.WrapTransport = transport.NewDynamicImpersonatingRoundTripper
 	http2configCopy.Host = endpoint
-	ts, err := rest.TransportFor(&http2configCopy)
-	if err != nil {
-		klog.Errorf("failed to create http2 transport for <cluster:%s,endpoint:%s>, err: %v", c.Cluster, endpoint, err)
-		return err
-	}
 
 	// since http2 doesn't support websocket, we need to disable http2 when using websocket
 	upgradeConfigCopy := http2configCopy
@@ -532,12 +523,6 @@ func (c *ClusterInfo) addOrUpdateEndpoint(endpoint string, disabled bool) error 
 		klog.Errorf("failed to convert transport to proxy.UpgradeRequestRoundTripper for <cluster:%s,endpoint:%s>", c.Cluster, endpoint)
 	}
 
-	client, err := kubernetes.NewForConfig(&http2configCopy)
-	if err != nil {
-		klog.Errorf("failed to create clientset for <cluster:%s,endpoint:%s>, err: %v", c.Cluster, endpoint, err)
-		return err
-	}
-
 	// initial endpoint status
 	initStatus := endpointStatus{
 		Disabled: disabled,
@@ -550,19 +535,21 @@ func (c *ClusterInfo) addOrUpdateEndpoint(endpoint string, disabled bool) error 
 		cancel:                cancel,
 		Cluster:               c.Cluster,
 		Endpoint:              endpoint,
-		status:                initStatus,
+		status:                &initStatus,
 		proxyConfig:           &http2configCopy,
-		ProxyTransport:        ts,
 		proxyUpgradeConfig:    &upgradeConfigCopy,
 		PorxyUpgradeTransport: urrt,
-		clientset:             client,
 		healthCheckFun:        c.endpointHeathCheck,
+	}
+	if err := info.ResetTransport(); err != nil {
+		klog.Errorf("failed to init transport for <cluster:%s,endpoint:%s>, err: %v", c.Cluster, endpoint, err)
+		return err
 	}
 
 	klog.Infof("[cluster info] new endpoint added, cluster=%q, endpoint=%q", c.Cluster, info.Endpoint)
 	c.Endpoints.Store(endpoint, info)
 
-	EnsureGatewayHealthCheck(info, c.healthCheckIntervalSeconds, info.ctx)
+	EnsureGatewayHealthCheck(info, c.healthCheckInterval, info.ctx)
 
 	return nil
 }

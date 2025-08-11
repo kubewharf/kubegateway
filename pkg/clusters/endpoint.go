@@ -17,30 +17,41 @@ package clusters
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
 
+	utilnet "k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/proxy"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	kts "k8s.io/client-go/transport"
 	"k8s.io/klog"
 
 	"github.com/kubewharf/kubegateway/pkg/gateway/metrics"
+	"github.com/kubewharf/kubegateway/pkg/transport"
 )
 
 type endpointStatus struct {
-	Healthy  bool
-	Reason   string
-	Message  string
-	Disabled bool
-	mux      sync.RWMutex
+	Healthy        bool
+	Reason         string
+	Message        string
+	Disabled       bool
+	UnhealthyCount int
+	mux            sync.RWMutex
 }
 
 func (s *endpointStatus) IsReady() bool {
 	s.mux.RLock()
 	defer s.mux.RUnlock()
 	return !s.Disabled && s.Healthy
+}
+
+func (s *endpointStatus) GetUnhealthyCount() int {
+	s.mux.RLock()
+	defer s.mux.RUnlock()
+	return s.UnhealthyCount
 }
 
 func (s *endpointStatus) SetDisabled(disabled bool) {
@@ -55,6 +66,11 @@ func (s *endpointStatus) SetStatus(healthy bool, reason, message string) {
 	s.Healthy = healthy
 	s.Reason = reason
 	s.Message = message
+	if healthy {
+		s.UnhealthyCount = 0
+	} else {
+		s.UnhealthyCount++
+	}
 }
 
 type EndpointInfo struct {
@@ -71,9 +87,10 @@ type EndpointInfo struct {
 	// http1 proxy round tripper for websocket
 	PorxyUpgradeTransport proxy.UpgradeRequestRoundTripper
 
-	clientset kubernetes.Interface
+	clientset    kubernetes.Interface
+	cancelableTs *transport.CancelableTransport
 
-	status endpointStatus
+	status *endpointStatus
 
 	healthCheckFun    EndpointHealthCheck
 	healthCheckCh     chan struct{}
@@ -89,6 +106,80 @@ func (e *EndpointInfo) Clientset() kubernetes.Interface {
 	return e.clientset
 }
 
+func (e *EndpointInfo) createTransport() (*transport.CancelableTransport, http.RoundTripper, *kubernetes.Clientset, error) {
+	ts, err := newTransport(e.proxyConfig)
+	if err != nil {
+		klog.Errorf("failed to create http2 transport for <cluster:%s,endpoint:%s>, err: %v", e.Cluster, e.Endpoint, err)
+		return nil, nil, nil, err
+	}
+	cancelableTs := transport.NewCancelableTransport(ts)
+	ts = cancelableTs
+
+	proxyTs, err := rest.HTTPWrappersForConfig(e.proxyConfig, ts)
+	if err != nil {
+		klog.Errorf("failed to wrap http2 transport for <cluster:%s,endpoint:%s>, err: %v", e.Cluster, e.Endpoint, err)
+		return nil, nil, nil, err
+	}
+
+	clientsetConfig := *e.proxyConfig
+	clientsetConfig.Transport = ts // let client set use the same transport as proxy
+	clientsetConfig.TLSClientConfig = rest.TLSClientConfig{}
+	client, err := kubernetes.NewForConfig(&clientsetConfig)
+	if err != nil {
+		klog.Errorf("failed to create clientset for <cluster:%s,endpoint:%s>, err: %v", e.Cluster, e.Endpoint, err)
+		return nil, nil, nil, err
+	}
+
+	return cancelableTs, proxyTs, client, nil
+}
+
+func (e *EndpointInfo) ResetTransport() error {
+	cancelableTs, ts, client, err := e.createTransport()
+	if err != nil {
+		return err
+	}
+	klog.Infof("set new transport %p for cluster %s endpoint: %s", cancelableTs, e.Cluster, e.Endpoint)
+	e.ProxyTransport = ts
+	e.clientset = client
+	cancelTs := e.cancelableTs
+	e.cancelableTs = cancelableTs
+	if cancelTs != nil {
+		klog.Infof("close transport %p for cluster %s endpoint: %s", cancelTs, e.Cluster, e.Endpoint)
+		cancelTs.Close()
+	}
+	return nil
+}
+
+func newTransport(cfg *rest.Config) (http.RoundTripper, error) {
+	config, err := cfg.TransportConfig()
+	if err != nil {
+		return nil, err
+	}
+	tlsConfig, err := kts.TLSConfigFor(config)
+	if err != nil {
+		return nil, err
+	}
+	// The options didn't require a custom TLS config
+	if tlsConfig == nil && config.Dial == nil {
+		return http.DefaultTransport, nil
+	}
+	dial := config.Dial
+	if dial == nil {
+		dial = (&net.Dialer{
+			Timeout:   30 * time.Second,
+			KeepAlive: 30 * time.Second,
+		}).DialContext
+	}
+	return utilnet.SetTransportDefaults(&http.Transport{
+		Proxy:               http.ProxyFromEnvironment,
+		TLSHandshakeTimeout: 10 * time.Second,
+		TLSClientConfig:     tlsConfig,
+		MaxIdleConnsPerHost: 25,
+		DialContext:         dial,
+		DisableCompression:  config.DisableCompression,
+	}), nil
+}
+
 func (e *EndpointInfo) SetDisabled(disabled bool) {
 	if e.status.Disabled != disabled {
 		e.status.Disabled = disabled
@@ -100,13 +191,18 @@ func (e *EndpointInfo) IstDisabled() bool {
 	return e.status.Disabled
 }
 
+func (e *EndpointInfo) GetUnhealthyCount() int {
+	return e.status.GetUnhealthyCount()
+}
+
 func (e *EndpointInfo) UpdateStatus(healthy bool, reason, message string) {
 	if !healthy {
 		metrics.RecordUnhealthyUpstream(e.Cluster, e.Endpoint, reason)
 	}
+	e.status.SetStatus(healthy, reason, message)
+
 	if e.status.Healthy != healthy {
 		// healthy changed
-		e.status.SetStatus(healthy, reason, message)
 		e.recordStatusChange()
 	}
 }
