@@ -82,7 +82,7 @@ all build:
 	@echo "$$ALL_HELP_INFO"
 else
 all build: make-rules
-	@$(MYBUILD) $(WHAT)
+	@$(MYBUILD) $(if $(WHAT),$(WHAT),$(shell find cmd -mindepth 1 -maxdepth 1 -type d))
 endif 
 
 define GO_BUILD_HELP_INFO
